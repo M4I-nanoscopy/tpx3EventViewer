@@ -8,12 +8,6 @@ import scipy.sparse
 from matplotlib.widgets import Slider
 from PIL import Image
 
-# TODO: Is this the most elegant way?
-E_CHIP = 0
-E_X = 1
-E_Y = 2
-E_TIME = 3
-
 
 def main():
     f = h5py.File(sys.argv[1], 'r')
@@ -80,10 +74,10 @@ def events_to_frame(frame):
 
     for chip in range(0, 4):
         # Index frame to only the particular chip
-        chip_events = frame[[frame[:, E_CHIP] == chip]]
+        chip_events = frame[[frame['chipId'] == chip]]
 
-        rows = chip_events[:, E_X]
-        cols = chip_events[:, E_Y]
+        rows = chip_events['x']
+        cols = chip_events['y']
 
         hist = np.histogram2d(rows, cols, bins=(xedges, yedges))
         chip_frame = hist[0]
