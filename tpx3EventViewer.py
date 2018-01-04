@@ -24,7 +24,7 @@ def main():
 
     # Output
     if settings.t:
-        im = Image.fromarray(frame, 'L')
+        im = Image.fromarray(frame)
 
         if settings.f:
             filename = settings.f
@@ -103,7 +103,7 @@ def build(events):
 # This function converts the event data to a 256 by 256 matrix and places the chips into a full frame
 # Also deals with the chip positions
 def events_to_frame(frame):
-    img = np.zeros(shape=(512, 512), dtype=np.uint8)
+    img = np.zeros(shape=(512, 512), dtype=np.uint16)
 
     xedges = np.arange(0, 257, 1)
     yedges = np.arange(0, 257, 1)
