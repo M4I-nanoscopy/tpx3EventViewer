@@ -47,8 +47,11 @@ def parse_arguments():
     parser.add_argument('FILE', help="Input .h5 file")
     parser.add_argument("-t", action='store_true', help="Save 8-bit .tif file")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
-    parser.add_argument("-n", action='store_true', help="Don't show matplotlib frame")
+    parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
     parser.add_argument("--hits", action='store_true', help="Use /hits instead of /events")
+    # Super pixel option
+    # Exposure time
+    # Max number of frames
 
     settings = parser.parse_args()
 
@@ -148,6 +151,45 @@ def events_to_frame(frame):
         #     img[512:1024, 0:512] = np.rot90(chip_frame, k=1)
 
     return img
+
+
+# # This function yields frames from the main list, so is memory efficient
+# def split(d, start_time, exposure):
+#     frames = [list(), list(), list(), list(), list()]
+#     last_frame = 0
+#     frame_offset = 0
+#
+#     # TODO: Here we read only one chunk, this may be good place to multi thread??
+#     events = d[0:d.chunks[0]]
+#
+#     for event in events:
+#         # The SPIDR_TIME has about a 20s timer, it may reset mid run
+#         if event[SPIDR_TIME] < start_time:
+#             logger.debug("SPIDR_TIME reset to %d, from %d" % (event[SPIDR_TIME], start_time))
+#             start_time = event[SPIDR_TIME]
+#             frame_offset = last_frame + len(frames)
+#
+#         # Calculate current frame
+#         frame = frame_offset + int((event[SPIDR_TIME] - start_time) / exposure)
+#
+#         if frame < last_frame:
+#             logger.warn("Wrong order of events! %i - %d" % (frame, last_frame))
+#             continue
+#
+#         # Yield previous frame if we are above buffer space of frames list
+#         if frame >= last_frame + 5:
+#             yield frames.pop(0)
+#             # Add empty frame
+#             frames.append(list())
+#             # Increase counter
+#             last_frame = last_frame + 1
+#
+#         frames[frame - last_frame].append(event)
+#
+#     # Yield remainder of frames
+#     for frame in frames:
+#         yield frame
+
 
 
 if __name__ == "__main__":
