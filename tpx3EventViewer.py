@@ -4,10 +4,13 @@ import sys
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.sparse
 from matplotlib.widgets import Slider
 from PIL import Image
 import os
 
+VERSION = '0.5.0'
+spidr_tick = 26.843 / 65536.
 
 def main():
     settings = parse_arguments()
@@ -20,7 +23,28 @@ def main():
     else:
         source = 'events'
 
-    frame = build(f[source][()])
+    data = f[source]
+    # TODO: Enable this check later
+    # if not data.attrs['version'] != VERSION:
+    #     print "WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (data.attrs['version'], VERSION)
+
+    z_source = None
+    if settings.hits_tot:
+        z_source = 'ToT'
+    elif settings.hits_toa:
+        z_source = 'cToA'
+    elif settings.hits_spidr:
+        z_source = 'TSPIDR'
+
+    if settings.exposure > 0:
+        start = min(data['TSPIDR'])
+        end = start + spidr_tick * settings.exposure
+        d = data[(data['TSPIDR'] < end)]
+    else:
+        d = data[()]
+
+
+    frame = build(d, z_source)
 
     # Output
     if settings.t:
@@ -48,9 +72,12 @@ def parse_arguments():
     parser.add_argument("-t", action='store_true', help="Save 8-bit .tif file")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
-    parser.add_argument("--hits", action='store_true', help="Use /hits instead of /events")
-    # Super pixel option
-    # Exposure time
+    parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
+    parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
+    parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
+    parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
+    parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
+    # Super resolution option
     # Max number of frames
 
     settings = parser.parse_args()
@@ -89,107 +116,44 @@ def show(frame):
     plt.show()
 
 
-def build(events):
-    # TODO: Handle exposure time and multiple frames
-    # frames = list()
-    # if exposure is not None:
-    #     start_time = d[0][SPIDR_TIME]
-    #     frames = split(d, start_time, exposure)
-    #
-    # for events in frames:
-    #
-
-    frame = events_to_frame(events)
+def build(events, z_source):
+    frame = to_frame(events, z_source)
     return frame
 
 
-# This function converts the event data to a 256 by 256 matrix and places the chips into a full frame
-# Also deals with the chip positions
-def events_to_frame(frame):
-    img = np.zeros(shape=(512, 512), dtype=np.uint16)
+def to_frame(frame, z_source):
+    rows = frame['y']
+    cols = frame['x']
 
-    xedges = np.arange(0, 257, 1)
-    yedges = np.arange(0, 257, 1)
+    if z_source is None:
+        data = np.ones(len(frame))
+    else:
+        data = frame[z_source]
 
-    for chip in range(0, 4):
-        # Index frame to only the particular chip
-        chip_events = frame[[frame['chipId'] == chip]]
+    # TODO: Handle non combined chip data
+    d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(516, 516), dtype=np.uint16)
 
-        rows = chip_events['x']
-        cols = chip_events['y']
+    return d.todense()
 
-        hist = np.histogram2d(rows, cols, bins=(xedges, yedges))
-        chip_frame = hist[0]
-        # chip_frame = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(256, 256))
+# Handle non combined chip data
+#     # if chip == 0:
+#     #     img[256:512, 256:512] = np.rot90(chip_frame.todense(), k=1)
+#     # if chip == 1:
+#     #     img[0:256, 256:512] = np.rot90(chip_frame.todense(), k=-1)
+#     # if chip == 2:
+#     #     img[0:256, 0:256] = np.rot90(chip_frame.todense(), k=-1)
+#     # if chip == 3:
+#     #     img[256:512, 0:256] = np.rot90(chip_frame.todense(), k=1)
 
-        # if chip == 0:
-        #     img[256:512, 256:512] = np.rot90(chip_frame.todense(), k=1)
-        # if chip == 1:
-        #     img[0:256, 256:512] = np.rot90(chip_frame.todense(), k=-1)
-        # if chip == 2:
-        #     img[0:256, 0:256] = np.rot90(chip_frame.todense(), k=-1)
-        # if chip == 3:
-        #     img[256:512, 0:256] = np.rot90(chip_frame.todense(), k=1)
-        #
-        # TODO: Chips position need to be configurable
-        if chip == 0:
-            img[256:512, 256:512] = np.rot90(chip_frame, k=1)
-        if chip == 1:
-            img[0:256, 256:512] = np.rot90(chip_frame, k=-1)
-        if chip == 2:
-            img[0:256, 0:256] = np.rot90(chip_frame, k=-1)
-        if chip == 3:
-            img[256:512, 0:256] = np.rot90(chip_frame, k=1)
-
-        # if chip == 0:
-        #     img[512:1024, 512:1024] = np.rot90(chip_frame, k=1)
-        # if chip == 1:
-        #     img[0:512, 512:1024] = np.rot90(chip_frame, k=-1)
-        # if chip == 2:
-        #     img[0:512, 0:512] = np.rot90(chip_frame, k=-1)
-        # if chip == 3:
-        #     img[512:1024, 0:512] = np.rot90(chip_frame, k=1)
-
-    return img
-
-
-# # This function yields frames from the main list, so is memory efficient
-# def split(d, start_time, exposure):
-#     frames = [list(), list(), list(), list(), list()]
-#     last_frame = 0
-#     frame_offset = 0
+# Do super resolution
+# img = np.zeros(shape=(512, 512), dtype=np.uint16)
 #
-#     # TODO: Here we read only one chunk, this may be good place to multi thread??
-#     events = d[0:d.chunks[0]]
+# xedges = np.arange(0, 257, 1)
+# yedges = np.arange(0, 257, 1)
 #
-#     for event in events:
-#         # The SPIDR_TIME has about a 20s timer, it may reset mid run
-#         if event[SPIDR_TIME] < start_time:
-#             logger.debug("SPIDR_TIME reset to %d, from %d" % (event[SPIDR_TIME], start_time))
-#             start_time = event[SPIDR_TIME]
-#             frame_offset = last_frame + len(frames)
+# hist = np.histogram2d(rows, cols, bins=(xedges, yedges))
+# chip_frame = hist[0]
 #
-#         # Calculate current frame
-#         frame = frame_offset + int((event[SPIDR_TIME] - start_time) / exposure)
-#
-#         if frame < last_frame:
-#             logger.warn("Wrong order of events! %i - %d" % (frame, last_frame))
-#             continue
-#
-#         # Yield previous frame if we are above buffer space of frames list
-#         if frame >= last_frame + 5:
-#             yield frames.pop(0)
-#             # Add empty frame
-#             frames.append(list())
-#             # Increase counter
-#             last_frame = last_frame + 1
-#
-#         frames[frame - last_frame].append(event)
-#
-#     # Yield remainder of frames
-#     for frame in frames:
-#         yield frame
-
 
 
 if __name__ == "__main__":
