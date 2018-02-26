@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+
+# Get rid of a harmless h5py FutureWarning. Can be removed with a new release of h5py
+# https://github.com/h5py/h5py/issues/961
+import warnings
+warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*',)
+
 import argparse
 import sys
 import h5py
@@ -9,8 +15,9 @@ from matplotlib.widgets import Slider
 from PIL import Image
 import os
 
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 spidr_tick = 26.843 / 65536.
+
 
 def main():
     settings = parse_arguments()
@@ -43,8 +50,7 @@ def main():
     else:
         d = data[()]
 
-
-    frame = build(d, z_source)
+    frame = build(d, z_source, settings.rotation)
 
     # Output
     if settings.t:
@@ -69,9 +75,11 @@ def parse_arguments():
     )
 
     parser.add_argument('FILE', help="Input .h5 file")
-    parser.add_argument("-t", action='store_true', help="Save 8-bit .tif file")
+    parser.add_argument("-t", action='store_true', help="Save 16-bit .tif file")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
+    parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
+                                                                      "-1 anti-clockwise, 0: none). Default: 0")
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
@@ -116,12 +124,12 @@ def show(frame):
     plt.show()
 
 
-def build(events, z_source):
-    frame = to_frame(events, z_source)
+def build(events, z_source, rotation):
+    frame = to_frame(events, z_source, rotation)
     return frame
 
 
-def to_frame(frame, z_source):
+def to_frame(frame, z_source, rotation):
     rows = frame['y']
     cols = frame['x']
 
@@ -133,7 +141,8 @@ def to_frame(frame, z_source):
     # TODO: Handle non combined chip data
     d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(516, 516), dtype=np.uint16)
 
-    return d.todense()
+    return np.rot90(d.todense(), k=rotation)
+
 
 # Handle non combined chip data
 #     # if chip == 0:
