@@ -50,7 +50,13 @@ def main():
     else:
         d = data[()]
 
-    frame = build(d, z_source, settings.rotation)
+    if 'shape' in data.attrs:
+        shape = data.attrs['shape']
+    else:
+        # Backwards compability. This was the max size before implementing the shape attribute
+        shape = 516
+
+    frame = to_frame(d, z_source, settings.rotation, settings.flip_x, settings.flip_y, shape)
 
     # Output
     if settings.t:
@@ -80,6 +86,9 @@ def parse_arguments():
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
                                                                       "-1 anti-clockwise, 0: none). Default: 0")
+    parser.add_argument("--flip_x", action='store_true', help="Flip image in X")
+    parser.add_argument("--flip_y", action='store_true', help="Flip image in Y")
+
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
@@ -124,12 +133,7 @@ def show(frame):
     plt.show()
 
 
-def build(events, z_source, rotation):
-    frame = to_frame(events, z_source, rotation)
-    return frame
-
-
-def to_frame(frame, z_source, rotation):
+def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
     rows = frame['y']
     cols = frame['x']
 
@@ -139,9 +143,19 @@ def to_frame(frame, z_source, rotation):
         data = frame[z_source]
 
     # TODO: Handle non combined chip data
-    d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(516, 516), dtype=np.uint16)
+    d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(shape, shape), dtype=np.uint16)
+    f= d.todense()
 
-    return np.rot90(d.todense(), k=rotation)
+    if rotation != 0:
+        f = np.rot90(f, k=rotation)
+
+    if flip_x:
+        f = np.flip(f, 1)
+
+    if flip_y:
+        f = np.flip(f, 0)
+
+    return f
 
 
 # Handle non combined chip data
