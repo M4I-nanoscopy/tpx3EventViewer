@@ -73,6 +73,8 @@ def main():
 
             frame = frame.astype(dtype=np.uint16)
 
+            im = Image.fromarray(frame)
+
         if settings.f:
             filename = settings.f
         else:
