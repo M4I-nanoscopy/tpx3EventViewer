@@ -1,0 +1,6 @@
+h5py>=2.7.1
+matplotlib>=2.1.0
+Pillow>=4.3.0
+scipy>=0.19.0
+numpy>=1.13.0
+configparser>=3.5
