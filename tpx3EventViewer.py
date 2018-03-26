@@ -60,7 +60,18 @@ def main():
 
     # Output
     if settings.t:
-        im = Image.fromarray(frame)
+
+        if settings.uint32:
+            # Can store directly to image
+            im = Image.fromarray(frame)
+        else:
+            # Needs possible clipping to max uint16 values
+            i16 = np.iinfo(np.uint16)
+            if frame.max() > i16.max:
+                print "WARNING: Cannot fit in uint16. Clipping values to uint16 max."
+                np.clip(frame, 0, i16.max, frame)
+
+            frame = frame.astype(dtype=np.uint16)
 
         if settings.f:
             filename = settings.f
@@ -81,7 +92,8 @@ def parse_arguments():
     )
 
     parser.add_argument('FILE', help="Input .h5 file")
-    parser.add_argument("-t", action='store_true', help="Save 16-bit .tif file")
+    parser.add_argument("-t", action='store_true', help="Save 16 bit uint .tif file")
+    parser.add_argument("--uint32", action='store_true', help="Store uint32 tif (not supported by all readers!)")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
@@ -143,7 +155,7 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
         data = frame[z_source]
 
     # TODO: Handle non combined chip data
-    d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(shape, shape), dtype=np.uint16)
+    d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(shape, shape), dtype=np.uint32)
     f= d.todense()
 
     if rotation != 0:
