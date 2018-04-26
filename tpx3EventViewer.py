@@ -153,9 +153,6 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
     rows = frame['y'].astype(dtype='uint16')
     cols = frame['x'].astype(dtype='uint16')
 
-    unique, counts = np.unique(rows, return_counts=True)
-    print dict(zip(unique, counts))
-
     if z_source is None:
         data = np.ones(len(frame))
     else:
