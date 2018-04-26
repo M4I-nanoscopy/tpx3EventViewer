@@ -3,7 +3,8 @@
 # Get rid of a harmless h5py FutureWarning. Can be removed with a new release of h5py
 # https://github.com/h5py/h5py/issues/961
 import warnings
-warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*',)
+
+warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*', )
 
 import argparse
 import sys
@@ -53,7 +54,7 @@ def main():
     if 'shape' in data.attrs:
         shape = data.attrs['shape']
     else:
-        # Backwards compability. This was the max size before implementing the shape attribute
+        # Backwards capability. This was the max size before implementing the shape attribute
         shape = 516
 
     frame = to_frame(d, z_source, settings.rotation, settings.flip_x, settings.flip_y, shape)
@@ -148,17 +149,20 @@ def show(frame):
 
 
 def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
-    rows = frame['y']
-    cols = frame['x']
+    # By casting to int we floor the result to the bottom left pixel it was found in
+    rows = frame['y'].astype(dtype='uint16')
+    cols = frame['x'].astype(dtype='uint16')
+
+    unique, counts = np.unique(rows, return_counts=True)
+    print dict(zip(unique, counts))
 
     if z_source is None:
         data = np.ones(len(frame))
     else:
         data = frame[z_source]
 
-    # TODO: Handle non combined chip data
     d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(shape, shape), dtype=np.uint32)
-    f= d.todense()
+    f = d.todense()
 
     if rotation != 0:
         f = np.rot90(f, k=rotation)
@@ -170,27 +174,6 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
         f = np.flip(f, 0)
 
     return f
-
-
-# Handle non combined chip data
-#     # if chip == 0:
-#     #     img[256:512, 256:512] = np.rot90(chip_frame.todense(), k=1)
-#     # if chip == 1:
-#     #     img[0:256, 256:512] = np.rot90(chip_frame.todense(), k=-1)
-#     # if chip == 2:
-#     #     img[0:256, 0:256] = np.rot90(chip_frame.todense(), k=-1)
-#     # if chip == 3:
-#     #     img[256:512, 0:256] = np.rot90(chip_frame.todense(), k=1)
-
-# Do super resolution
-# img = np.zeros(shape=(512, 512), dtype=np.uint16)
-#
-# xedges = np.arange(0, 257, 1)
-# yedges = np.arange(0, 257, 1)
-#
-# hist = np.histogram2d(rows, cols, bins=(xedges, yedges))
-# chip_frame = hist[0]
-#
 
 
 if __name__ == "__main__":
