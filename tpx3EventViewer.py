@@ -22,6 +22,7 @@ VERSION = '0.5.1'
 spidr_tick = 26.843 / 65536.
 ticks_second = 1. / spidr_tick
 
+
 def main():
     settings = parse_arguments()
 
@@ -34,6 +35,7 @@ def main():
         source = 'events'
 
     data = f[source]
+
     # TODO: Enable this check later
     # if not data.attrs['version'] != VERSION:
     #     print "WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (data.attrs['version'], VERSION)
@@ -46,26 +48,12 @@ def main():
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
 
-    if settings.exposure > 0:
-        spidr = data['TSPIDR']
-        start = spidr[0]
-        start_idx = 0
-
-        end = start + ticks_second * settings.exposure
-
-        if end > 65535:
-            remainder = start + ticks_second * settings.exposure - 65535
-            end_idx = np.argmax((spidr > remainder) & (spidr < spidr[0] - 10))
-        else:
-            end_idx = np.argmax(spidr > end)
-
-        d = data[start_idx:end_idx]
-    else:
-        start_idx = 0
-        end_idx = len(data)
-        d = data[()]
+    # Determine frame indeces
+    frames_idx = calculate_frames_idx(data, settings.exposure)
 
     if settings.spidr_stats:
+        start_idx = 0
+        end_idx = len(data)
         spidr_time_stats(data, start_idx, end_idx)
 
     if 'shape' in data.attrs:
@@ -74,34 +62,22 @@ def main():
         # Backwards capability. This was the max size before implementing the shape attribute
         shape = 516
 
-    frame = to_frame(d, z_source, settings.rotation, settings.flip_x, settings.flip_y, shape)
+    # Calculate all frames
+    frames = list()
+    for frame_idx in frames_idx:
+        frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y, shape))
 
     # Output
     if settings.t:
-
-        if settings.uint32:
-            # Can store directly to image
-            im = Image.fromarray(frame)
-        else:
-            # Needs possible clipping to max uint16 values
-            i16 = np.iinfo(np.uint16)
-            if frame.max() > i16.max:
-                print "WARNING: Cannot fit in uint16. Clipping values to uint16 max."
-                np.clip(frame, 0, i16.max, frame)
-
-            frame = frame.astype(dtype=np.uint16)
-
-            im = Image.fromarray(frame)
-
         if settings.f:
             filename = settings.f
         else:
             filename = os.path.splitext(settings.FILE)[0] + ".tif"
 
-        im.save(filename)
+        save_tiff(frames, settings.uint32, filename)
 
     if not settings.n:
-        show(frame)
+        show(frames)
 
 
 def parse_arguments():
@@ -135,10 +111,32 @@ def parse_arguments():
     return settings
 
 
-def show(frame):
-    # TODO: Make this cleaner
+def save_tiff(frames, uint32, filename):
 
+    images = list()
+    for frame in frames:
+        if uint32:
+            # Can store directly to image
+            im = Image.fromarray(frame)
+        else:
+            # Needs possible clipping to max uint16 values
+            i16 = np.iinfo(np.uint16)
+            if frame.max() > i16.max:
+                print "WARNING: Cannot fit in uint16. Clipping values to uint16 max."
+                np.clip(frame, 0, i16.max, frame)
+
+            frame = frame.astype(dtype=np.uint16)
+
+            im = Image.fromarray(frame)
+
+        images.append(im)
+
+    images[0].save(filename, save_all=True, append_images=images[1:])
+
+
+def show(frames):
     # Calculate threshold values
+    frame = frames[0]
     min5 = np.percentile(frame, 5)
     min = np.min(frame)
     max95 = np.percentile(frame, 95)
@@ -148,22 +146,85 @@ def show(frame):
     ax = fig.add_subplot(111)
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
-    im1 = ax.imshow(frame, vmin=min5, vmax=max95)
-    fig.colorbar(im1)
+    im = ax.imshow(frame, vmin=min5, vmax=max95)
+    fig.colorbar(im)
+
+    def update_frame(val):
+        idx = int(val)
+        im.set_data(frames[idx])
+        fig.canvas.draw()
+
+    def update_clim(val):
+        im.set_clim([smin.val, smax.val])
+        fig.canvas.draw()
 
     axmin = fig.add_axes([0.25, 0.1, 0.65, 0.03])
     axmax = fig.add_axes([0.25, 0.15, 0.65, 0.03])
     smin = Slider(axmin, 'Min', min, max, valinit=min5)
     smax = Slider(axmax, 'Max', min, max, valinit=max95)
+    smin.on_changed(update_clim)
+    smax.on_changed(update_clim)
 
-    def update(val):
-        im1.set_clim([smin.val, smax.val])
-        fig.canvas.draw()
-
-    smin.on_changed(update)
-    smax.on_changed(update)
+    if len(frames) > 1:
+        axframe = fig.add_axes([0.25, 0.20, 0.65, 0.03])
+        frame = Slider(axframe, 'Frame', 0, len(frames) - 1, valinit=0, valfmt="%i")
+        frame.on_changed(update_frame)
 
     plt.show()
+
+
+def calculate_frames_idx(data, exposure):
+    frames = list()
+
+    if exposure > 0:
+
+        spidr = data['TSPIDR']
+        start = spidr[0]
+        start_idx = 0
+        end = start + ticks_second * exposure
+        reset = False
+
+        # Calculate all frames indeces
+        while start_idx < len(data):
+            if reset:
+                end_idx = np.argmax((spidr > end) & (spidr < spidr[0] - 10))
+
+                # True end
+                end = spidr[end_idx]
+
+            elif end > 65535:
+                remainder = start + ticks_second * exposure - 65535
+                end_idx = np.argmax((spidr > remainder) & (spidr < spidr[0] - 10))
+
+                end = spidr[end_idx]
+                reset = True
+            else:
+                end_idx = np.argmax(spidr > end)
+
+                # True end
+                end = spidr[end_idx]
+
+            # Correct for np.argmax returning 0 when going past the end
+            if end_idx == 0:
+                end_idx = len(data)
+
+            frames.append({
+                'start_idx': start_idx,
+                'end_idx': end_idx,
+                'd': data[start_idx:end_idx]
+            })
+
+            start = end
+            start_idx = end_idx
+            end = start + ticks_second * exposure
+    else:
+        frames.append({
+            'start_idx': 0,
+            'end_idx': len(data),
+            'd': data[()]
+        })
+
+    return frames
 
 
 def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
