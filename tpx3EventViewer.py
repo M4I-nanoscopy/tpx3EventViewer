@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse
 from matplotlib.widgets import Slider
+from matplotlib import animation
 from PIL import Image
 import os
 
@@ -77,7 +78,7 @@ def main():
         save_tiff(frames, settings.uint32, filename)
 
     if not settings.n:
-        show(frames)
+        show(frames, settings.m)
 
 
 def parse_arguments():
@@ -92,6 +93,7 @@ def parse_arguments():
     parser.add_argument("--uint32", action='store_true', help="Store uint32 tif (not supported by all readers!)")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
+    parser.add_argument("-m", action='store_true', help="Store as animated mp4 movie")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
                                                                       "-1 anti-clockwise, 0: none). Default: 0")
     parser.add_argument("--flip_x", action='store_true', help="Flip image in X")
@@ -134,7 +136,7 @@ def save_tiff(frames, uint32, filename):
     images[0].save(filename, save_all=True, append_images=images[1:])
 
 
-def show(frames):
+def show(frames, animate):
     # Calculate threshold values
     frame = frames[0]
     min5 = np.percentile(frame, 5)
@@ -142,7 +144,12 @@ def show(frames):
     max95 = np.percentile(frame, 95)
     max = np.max(frame)
 
-    fig = plt.figure()
+    if animate:
+        dpi = 300
+    else:
+        dpi = 150
+
+    fig = plt.figure(dpi=dpi)
     ax = fig.add_subplot(111)
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
@@ -151,6 +158,11 @@ def show(frames):
 
     def update_frame(val):
         idx = int(val)
+        im.set_data(frames[idx])
+        fig.canvas.draw()
+
+    def animate_frame(idx):
+        sframe.set_val(idx)
         im.set_data(frames[idx])
         fig.canvas.draw()
 
@@ -166,11 +178,17 @@ def show(frames):
     smax.on_changed(update_clim)
 
     if len(frames) > 1:
-        axframe = fig.add_axes([0.25, 0.20, 0.65, 0.03])
-        frame = Slider(axframe, 'Frame', 0, len(frames) - 1, valinit=0, valfmt="%i")
-        frame.on_changed(update_frame)
+        axframe = fig.add_axes([0.25, 0.05, 0.65, 0.03])
+        sframe = Slider(axframe, 'Frame', 0, len(frames) - 1, valinit=0, valfmt="%i")
+        sframe.on_changed(update_frame)
 
-    plt.show()
+    if animate:
+        # Animate
+        anim = animation.FuncAnimation(fig, animate_frame, frames=len(frames) - 1, interval=200)
+        # Save
+        anim.save('animation.mp4', fps=1, extra_args=['-vcodec', 'libx264'])
+    else:
+        plt.show()
 
 
 def calculate_frames_idx(data, exposure):
