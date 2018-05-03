@@ -4,6 +4,8 @@
 # https://github.com/h5py/h5py/issues/961
 import warnings
 
+from matplotlib.ticker import EngFormatter
+
 warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*', )
 
 import argparse
@@ -18,7 +20,7 @@ import os
 
 VERSION = '0.5.1'
 spidr_tick = 26.843 / 65536.
-
+ticks_second = 1. / spidr_tick
 
 def main():
     settings = parse_arguments()
@@ -45,11 +47,26 @@ def main():
         z_source = 'TSPIDR'
 
     if settings.exposure > 0:
-        start = min(data['TSPIDR'])
-        end = start + spidr_tick * settings.exposure
-        d = data[(data['TSPIDR'] < end)]
+        spidr = data['TSPIDR']
+        start = spidr[0]
+        start_idx = 0
+
+        end = start + ticks_second * settings.exposure
+
+        if end > 65535:
+            remainder = start + ticks_second * settings.exposure - 65535
+            end_idx = np.argmax((spidr > remainder) & (spidr < spidr[0] - 10))
+        else:
+            end_idx = np.argmax(spidr > end)
+
+        d = data[start_idx:end_idx]
     else:
+        start_idx = 0
+        end_idx = len(data)
         d = data[()]
+
+    if settings.spidr_stats:
+        spidr_time_stats(data, start_idx, end_idx)
 
     if 'shape' in data.attrs:
         shape = data.attrs['shape']
@@ -109,7 +126,8 @@ def parse_arguments():
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
-    # Super resolution option
+    parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
+
     # Max number of frames
 
     settings = parser.parse_args()
@@ -171,6 +189,68 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
         f = np.flip(f, 0)
 
     return f
+
+
+# Display some stats about the SPIDR global time
+def spidr_time_stats(hits, start_idx, end_idx):
+    # Load all hits into memory
+    hits = hits[()]
+
+    spidr = hits['TSPIDR']
+
+    tick = 26.843 / 65536.
+
+    print("SPIDR time start: %d" % spidr[0])
+    print("SPIDR time end: %d" % spidr[-1])
+    print("SPIDR time min: %d" % spidr.min())
+    print("SPIDR time max: %d" % spidr.max())
+
+    if spidr.max() > 65535 - 100:
+        ticks = 65535 - int(spidr[0]) + int(spidr[-1])
+    else:
+        ticks = int(spidr[-1]) - int(spidr[0])
+
+    print("SPIDR exposure time (estimate): %.5f" % (ticks * tick))
+
+    print("Frame start time (idx %d): %d" % (start_idx, spidr[start_idx]))
+    print("Frame end time (idx %d): %d" % (end_idx, spidr[end_idx]))
+
+    print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000) / (ticks * tick)))
+
+    plot_timers(hits, start_idx, end_idx)
+
+
+# Plot SPIDR time of entire run
+def plot_timers(hits, start_idx, end_idx):
+    fig, ax = plt.subplots()
+
+    index = np.arange(len(hits))
+
+    for chip in range(0, 4):
+        # Index frame to only the particular chip
+        chip_events = hits[[hits['chipId'] == chip]]
+        chip_index = index[[hits['chipId'] == chip]]
+
+        # Get only every 1000nth hit
+        spidr = chip_events['TSPIDR'][1::1000]
+        spidr_index = chip_index[1::1000]
+
+        plt.scatter(spidr_index, spidr, label='Chip %d' % chip)
+
+    plt.title('SPIDR time (every 1000nth hit)')
+
+    formatter0 = EngFormatter(unit='hit')
+    ax.xaxis.set_major_formatter(formatter0)
+
+    plt.xlabel('Hit index')
+    plt.ylabel('SPIDR time ticks')
+    plt.legend()
+
+    # Frame start and end time
+    plt.axvline(start_idx)
+    plt.axvline(end_idx)
+
+    plt.show()
 
 
 if __name__ == "__main__":
