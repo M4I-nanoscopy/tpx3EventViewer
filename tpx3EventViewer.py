@@ -53,9 +53,7 @@ def main():
     frames_idx = calculate_frames_idx(data, settings.exposure)
 
     if settings.spidr_stats:
-        start_idx = 0
-        end_idx = len(data)
-        spidr_time_stats(data, start_idx, end_idx)
+        spidr_time_stats(data, frames_idx)
 
     if 'shape' in data.attrs:
         shape = data.attrs['shape']
@@ -271,7 +269,7 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
 
 
 # Display some stats about the SPIDR global time
-def spidr_time_stats(hits, start_idx, end_idx):
+def spidr_time_stats(hits, frames_idx):
     # Load all hits into memory
     hits = hits[()]
 
@@ -291,16 +289,16 @@ def spidr_time_stats(hits, start_idx, end_idx):
 
     print("SPIDR exposure time (estimate): %.5f" % (ticks * tick))
 
-    print("Frame start time (idx %d): %d" % (start_idx, spidr[start_idx]))
-    print("Frame end time (idx %d): %d" % (end_idx, spidr[end_idx]))
+    print("Frame start time (idx %d): %d" % (frames_idx[0]['start_idx'], spidr[frames_idx[0]['start_idx']]))
+    print("Frame end time (idx %d): %d" % (frames_idx[0]['end_idx'], spidr[frames_idx[0]['end_idx']]))
 
     print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000) / (ticks * tick)))
 
-    plot_timers(hits, start_idx, end_idx)
+    plot_timers(hits, frames_idx)
 
 
 # Plot SPIDR time of entire run
-def plot_timers(hits, start_idx, end_idx):
+def plot_timers(hits, frames_idx):
     fig, ax = plt.subplots()
 
     index = np.arange(len(hits))
@@ -326,8 +324,9 @@ def plot_timers(hits, start_idx, end_idx):
     plt.legend()
 
     # Frame start and end time
-    plt.axvline(start_idx)
-    plt.axvline(end_idx)
+    for frame_idx in frames_idx:
+        plt.axvline(frame_idx['start_idx'])
+        plt.axvline(frame_idx['end_idx'])
 
     plt.show()
 
