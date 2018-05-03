@@ -50,7 +50,7 @@ def main():
         z_source = 'TSPIDR'
 
     # Determine frame indeces
-    frames_idx = calculate_frames_idx(data, settings.exposure)
+    frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
 
     if settings.spidr_stats:
         spidr_time_stats(data, frames_idx)
@@ -101,8 +101,10 @@ def parse_arguments():
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
-    parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
+    parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
+    parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
+    parser.add_argument("--end", type=float, default=0, help="End time in seconds")
 
     # Max number of frames
 
@@ -184,24 +186,38 @@ def show(frames, animate):
         # Animate
         anim = animation.FuncAnimation(fig, animate_frame, frames=len(frames) - 1, interval=200)
         # Save
-        anim.save('animation.mp4', fps=1, extra_args=['-vcodec', 'libx264'])
+        anim.save('animation.mp4', fps=10, extra_args=['-vcodec', 'libx264'])
     else:
         plt.show()
 
 
-def calculate_frames_idx(data, exposure):
+def calculate_frames_idx(data, exposure, start_time, end_time):
     frames = list()
+
+    spidr = data['TSPIDR']
+
+    if start_time > 0:
+        start = spidr[0] + ticks_second * start_time
+        start_idx = np.argmax(spidr > start)
+    else:
+        start = spidr[0]
+        start_idx = 0
+
+    if end_time > 0:
+        end_final = spidr[0] + ticks_second * end_time
+        end_final_idx = np.argmax(spidr > end_final)
+        if end_final_idx == 0:
+            end_final_idx = len(data)
+    else:
+        end_final_idx = len(data)
+
+    end = start + ticks_second * exposure
 
     if exposure > 0:
 
-        spidr = data['TSPIDR']
-        start = spidr[0]
-        start_idx = 0
-        end = start + ticks_second * exposure
         reset = False
-
         # Calculate all frames indeces
-        while start_idx < len(data):
+        while start_idx < end_final_idx:
             if reset:
                 end_idx = np.argmax((spidr > end) & (spidr < spidr[0] - 10))
 
@@ -235,9 +251,9 @@ def calculate_frames_idx(data, exposure):
             end = start + ticks_second * exposure
     else:
         frames.append({
-            'start_idx': 0,
-            'end_idx': len(data),
-            'd': data[()]
+            'start_idx': start_idx,
+            'end_idx': end_final_idx,
+            'd': data[start_idx:end_final_idx]
         })
 
     return frames
