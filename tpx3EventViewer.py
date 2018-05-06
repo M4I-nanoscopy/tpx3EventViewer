@@ -49,17 +49,17 @@ def main():
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
 
-    # Determine frame indeces
-    frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
-
-    if settings.spidr_stats:
-        spidr_time_stats(data, frames_idx)
-
     if 'shape' in data.attrs:
         shape = data.attrs['shape']
     else:
         # Backwards capability. This was the max size before implementing the shape attribute
         shape = 516
+
+    # Determine frame indeces
+    frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
+
+    if settings.spidr_stats:
+        spidr_time_stats(data, frames_idx)
 
     # Calculate all frames
     frames = list()
@@ -207,9 +207,9 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
         end_final = spidr[0] + ticks_second * end_time
         end_final_idx = np.argmax(spidr > end_final)
         if end_final_idx == 0:
-            end_final_idx = len(data)
+            end_final_idx = len(data) - 1
     else:
-        end_final_idx = len(data)
+        end_final_idx = len(data) - 1
 
     end = start + ticks_second * exposure
 
@@ -238,7 +238,7 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
 
             # Correct for np.argmax returning 0 when going past the end
             if end_idx == 0:
-                end_idx = len(data)
+                end_idx = len(data) - 1
 
             frames.append({
                 'start_idx': start_idx,
@@ -308,7 +308,7 @@ def spidr_time_stats(hits, frames_idx):
     print("Frame start time (idx %d): %d" % (frames_idx[0]['start_idx'], spidr[frames_idx[0]['start_idx']]))
     print("Frame end time (idx %d): %d" % (frames_idx[0]['end_idx'], spidr[frames_idx[0]['end_idx']]))
 
-    print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000) / (ticks * tick)))
+    print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000.) / (ticks * tick)))
 
     plot_timers(hits, frames_idx)
 
