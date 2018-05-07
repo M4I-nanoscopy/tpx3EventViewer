@@ -2,8 +2,10 @@
 
 # Get rid of a harmless h5py FutureWarning. Can be removed with a new release of h5py
 # https://github.com/h5py/h5py/issues/961
+import _tkinter
 import warnings
 
+from matplotlib.lines import Line2D
 from matplotlib.ticker import EngFormatter
 
 warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*', )
@@ -15,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse
 from matplotlib.widgets import Slider
-from matplotlib import animation
+from matplotlib import animation, patches
 from PIL import Image
 import os
 
@@ -28,6 +30,11 @@ def main():
     settings = parse_arguments()
 
     f = h5py.File(settings.FILE, 'r')
+
+    if settings.cluster_stats:
+        # TODO: Check for existence of these datasets, also this exit() here is not pretty
+        print_cluster_stats(f['cluster_info'], f['cluster_stats'])
+        exit(0)
 
     # Build frame
     if settings.hits:
@@ -102,6 +109,7 @@ def parse_arguments():
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
+    parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
@@ -181,6 +189,10 @@ def show(frames, animate):
         axframe = fig.add_axes([0.25, 0.05, 0.65, 0.03])
         sframe = Slider(axframe, 'Frame', 0, len(frames) - 1, valinit=0, valfmt="%i")
         sframe.on_changed(update_frame)
+
+    # ax.set(ylim=(375, 360), xlim=(433, 453), autoscale_on=False)
+    # l = Line2D([430, 456], [460, 262], color='red')
+    # ax.add_line(l)
 
     if animate:
         # Animate
@@ -345,6 +357,56 @@ def plot_timers(hits, frames_idx):
         plt.axvline(frame_idx['end_idx'])
 
     plt.show()
+
+
+def print_cluster_stats(cluster_info, cluster_stats):
+    stats = cluster_stats[()]
+
+    removed = len(cluster_stats) - len(cluster_info)
+    removed_percentage = float(removed / float(len(cluster_info) + removed)) * 100
+
+    print("Removed %d clusters and single hits (%d percent)" % (removed, removed_percentage))
+
+    # Figure
+    try:
+        fig, ax = plt.subplots()
+    except _tkinter.TclError as e:
+        print('Could not display cluster_stats plot. Error message was: %s' % str(e))
+        return
+
+    # Make 2d hist
+    cmap = plt.get_cmap('viridis')
+    cmap.set_under('w', 1)
+    bins = [np.arange(0, 700, 25), np.arange(0, 16, 1)]
+    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=1, range=((0, 700), (0, 16)), bins=bins)
+
+    # Add box showing filter values
+    ax.add_patch(
+        patches.Rectangle(
+            (cluster_stats.attrs['cluster_min_sum_tot'], cluster_stats.attrs['cluster_min_size']),  # (x,y)
+            cluster_stats.attrs['cluster_max_sum_tot'] - cluster_stats.attrs['cluster_min_sum_tot'],  # width
+            cluster_stats.attrs['cluster_max_size'] - cluster_stats.attrs['cluster_min_size'],  # height
+            fill=False, edgecolor='red', linewidth=2
+        )
+    )
+
+    ax.set_xticks(bins[0])
+    ax.set_yticks(bins[1])
+    ax.set_ylim(1)
+    plt.tick_params(colors='black', )
+    plt.grid(b=True, which='both')
+    plt.ylabel('Cluster Size (pixels)')
+    plt.xlabel('Cluster Total ToT (A.U)')
+    plt.colorbar()
+
+    fig, ax = plt.subplots()
+    plt.xlabel('Cluster Total ToT (A.U)')
+    plt.ylabel('Normalised occurrence')
+    plt.grid()
+    plt.hist(cluster_stats[:, 1], range=(0, 700), bins=699)
+
+    plt.show()
+
 
 
 if __name__ == "__main__":
