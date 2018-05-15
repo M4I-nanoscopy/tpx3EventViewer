@@ -80,7 +80,7 @@ def main():
         else:
             filename = os.path.splitext(settings.FILE)[0] + ".tif"
 
-        save_tiff(frames, settings.uint32, filename)
+        save_tiff(frames, settings.uint32, settings.uint8, filename)
 
     if not settings.n:
         show(frames, settings.m)
@@ -94,8 +94,9 @@ def parse_arguments():
     )
 
     parser.add_argument('FILE', help="Input .h5 file")
-    parser.add_argument("-t", action='store_true', help="Save 16 bit uint .tif file")
+    parser.add_argument("-t", action='store_true', help="Store uint16 .tif file")
     parser.add_argument("--uint32", action='store_true', help="Store uint32 tif (not supported by all readers!)")
+    parser.add_argument("--uint8", action='store_true', help="Store uint8 tif (supported by almost all readers)")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
     parser.add_argument("-m", action='store_true', help="Store as animated mp4 movie")
@@ -121,12 +122,21 @@ def parse_arguments():
     return settings
 
 
-def save_tiff(frames, uint32, filename):
-
+def save_tiff(frames, uint32, uint8, filename):
     images = list()
     for frame in frames:
         if uint32:
             # Can store directly to image
+            im = Image.fromarray(frame)
+        elif uint8:
+            # Needs possible clipping to max uint16 values
+            i8 = np.iinfo(np.uint8)
+            if frame.max() > i8.max:
+                print "WARNING: Cannot fit in uint8. Clipping values to uint16 max."
+                np.clip(frame, 0, i8.max, frame)
+
+            frame = frame.astype(dtype=np.uint8)
+
             im = Image.fromarray(frame)
         else:
             # Needs possible clipping to max uint16 values
@@ -406,7 +416,6 @@ def print_cluster_stats(cluster_info, cluster_stats):
     plt.hist(cluster_stats[:, 1], range=(0, 700), bins=699)
 
     plt.show()
-
 
 
 if __name__ == "__main__":
