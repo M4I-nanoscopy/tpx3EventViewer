@@ -7,6 +7,7 @@ import warnings
 
 from matplotlib.lines import Line2D
 from matplotlib.ticker import EngFormatter
+from scipy import fftpack
 
 warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*', )
 
@@ -71,7 +72,7 @@ def main():
     # Calculate all frames
     frames = list()
     for frame_idx in frames_idx:
-        frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y, shape))
+        frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y, settings.power_spectrum, shape))
 
     # Output
     if settings.t:
@@ -102,9 +103,9 @@ def parse_arguments():
     parser.add_argument("-m", action='store_true', help="Store as animated mp4 movie")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
                                                                       "-1 anti-clockwise, 0: none). Default: 0")
+    parser.add_argument("--power_spectrum", action='store_true', help="Show power spectrum")
     parser.add_argument("--flip_x", action='store_true', help="Flip image in X")
     parser.add_argument("--flip_y", action='store_true', help="Flip image in Y")
-
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
@@ -114,8 +115,6 @@ def parse_arguments():
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
-
-    # Max number of frames
 
     settings = parser.parse_args()
 
@@ -281,7 +280,7 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     return frames
 
 
-def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
+def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape):
     # By casting to int we floor the result to the bottom left pixel it was found in
     rows = frame['y'].astype(dtype='uint16')
     cols = frame['x'].astype(dtype='uint16')
@@ -303,7 +302,20 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, shape):
     if flip_y:
         f = np.flip(f, 0)
 
-    return f
+    if power_spectrum:
+        # Take the fourier transform of the image.
+        F1 = fftpack.fft2(f)
+
+        # Now shift the quadrants around so that low spatial frequencies are in
+        # the center of the 2D fourier transformed image.
+        F2 = fftpack.fftshift(F1)
+
+        # Calculate a 2D power spectrum
+        psd2D = np.abs(F2) ** 2
+
+        return np.log10(psd2D)
+    else:
+        return f
 
 
 # Display some stats about the SPIDR global time
