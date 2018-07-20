@@ -1,23 +1,15 @@
 #!/usr/bin/env python
 
-# Get rid of a harmless h5py FutureWarning. Can be removed with a new release of h5py
-# https://github.com/h5py/h5py/issues/961
 import _tkinter
-import warnings
-
-from matplotlib.lines import Line2D
 from matplotlib.ticker import EngFormatter
 from scipy import fftpack
-
-warnings.filterwarnings('ignore', 'Conversion of the second argument of issubdtype from .*', )
-
 import argparse
 import sys
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse
-from matplotlib.widgets import Slider
+from matplotlib.widgets import Slider, CheckButtons
 from matplotlib import animation, patches
 from PIL import Image
 import os
@@ -37,11 +29,19 @@ def main():
         print_cluster_stats(f['cluster_info'], f['cluster_stats'])
         exit(0)
 
-    # Build frame
+    # Get source
     if settings.hits:
         source = 'hits'
+
+        if not source in f:
+            print("ERROR: No /hits dataset present in file (%s). Did you mean without --hits to display events?")
+            exit(1)
     else:
         source = 'events'
+
+        if not source in f:
+            print("ERROR: No /events dataset present in file (%s). Did you mean to use --hits to display hits?")
+            exit(1)
 
     data = f[source]
 
@@ -49,6 +49,7 @@ def main():
     # if not data.attrs['version'] != VERSION:
     #     print "WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (data.attrs['version'], VERSION)
 
+    # Get z_source
     z_source = None
     if settings.hits_tot:
         z_source = 'ToT'
@@ -57,11 +58,20 @@ def main():
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
 
-    if 'shape' in data.attrs:
-        shape = data.attrs['shape']
+    # Get shape of matrix
+    shape = data.attrs['shape']
+
+    # Load data and apply ToT threshold
+    if settings.hits and (settings.tot_threshold > 0 or settings.tot_limit < 1023):
+        data = data[()]
+
+        if settings.tot_threshold > 0:
+            data = data[data['ToT'] > settings.tot_threshold ]
+
+        if settings.tot_limit < 1023:
+            data = data[data['ToT'] < settings.tot_limit]
     else:
-        # Backwards capability. This was the max size before implementing the shape attribute
-        shape = 516
+        data = data[()]
 
     # Determine frame indeces
     frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
@@ -72,7 +82,8 @@ def main():
     # Calculate all frames
     frames = list()
     for frame_idx in frames_idx:
-        frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y, settings.power_spectrum, shape))
+        frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
+                               settings.power_spectrum, shape))
 
     # Output
     if settings.t:
@@ -112,6 +123,8 @@ def parse_arguments():
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
     parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
+    parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
+    parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
@@ -131,7 +144,7 @@ def save_tiff(frames, uint32, uint8, filename):
             # Needs possible clipping to max uint16 values
             i8 = np.iinfo(np.uint8)
             if frame.max() > i8.max:
-                print "WARNING: Cannot fit in uint8. Clipping values to uint16 max."
+                print("WARNING: Cannot fit in uint8. Clipping values to uint16 max.")
                 np.clip(frame, 0, i8.max, frame)
 
             frame = frame.astype(dtype=np.uint8)
@@ -141,7 +154,7 @@ def save_tiff(frames, uint32, uint8, filename):
             # Needs possible clipping to max uint16 values
             i16 = np.iinfo(np.uint16)
             if frame.max() > i16.max:
-                print "WARNING: Cannot fit in uint16. Clipping values to uint16 max."
+                print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
                 np.clip(frame, 0, i16.max, frame)
 
             frame = frame.astype(dtype=np.uint16)
@@ -167,6 +180,7 @@ def show(frames, animate):
         dpi = 150
 
     fig = plt.figure(dpi=dpi)
+    fig.canvas.set_window_title('tpx3EventViewer')
     ax = fig.add_subplot(111)
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
@@ -187,8 +201,22 @@ def show(frames, animate):
         im.set_clim([smin.val, smax.val])
         fig.canvas.draw()
 
+    def update_check(label):
+        if label == 'Grayscale':
+            if im.get_cmap().name == 'gray':
+                im.set_cmap(plt.rcParams['image.cmap'])
+            else:
+                im.set_cmap('gray')
+            fig.canvas.draw()
+        if label == 'foo':
+            print('bar')
+
     axmin = fig.add_axes([0.25, 0.1, 0.65, 0.03])
     axmax = fig.add_axes([0.25, 0.15, 0.65, 0.03])
+    rax = fig.add_axes([0.01, 0.7, 0.15, 0.15])
+    check = CheckButtons(rax, ('Grayscale', 'foo'), (False, False))
+    check.on_clicked(update_check)
+
     smin = Slider(axmin, 'Min', min, max, valinit=min5)
     smax = Slider(axmax, 'Max', min, max, valinit=max95)
     smin.on_changed(update_clim)
@@ -198,10 +226,6 @@ def show(frames, animate):
         axframe = fig.add_axes([0.25, 0.05, 0.65, 0.03])
         sframe = Slider(axframe, 'Frame', 0, len(frames) - 1, valinit=0, valfmt="%i")
         sframe.on_changed(update_frame)
-
-    # ax.set(ylim=(375, 360), xlim=(433, 453), autoscale_on=False)
-    # l = Line2D([430, 456], [460, 262], color='red')
-    # ax.add_line(l)
 
     if animate:
         # Animate
@@ -318,6 +342,16 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape):
         return f
 
 
+def smooth_cross(f):
+    mean = f[f > 10].mean()
+    stdev = f[f > 10].std()
+
+    f[254:257, 0:516] = [f[253, 0:516], f[253, 0:516], f[253, 0:516]]
+    f[257:260, 0:516] = [f[261, 0:516], f[261, 0:516], f[261, 0:516]]
+
+    return f
+
+
 # Display some stats about the SPIDR global time
 def spidr_time_stats(hits, frames_idx):
     # Load all hits into memory
@@ -391,16 +425,19 @@ def print_cluster_stats(cluster_info, cluster_stats):
 
     # Figure
     try:
-        fig, ax = plt.subplots()
+        fig = plt.figure(dpi=200)
+        ax = fig.add_subplot(111)
     except _tkinter.TclError as e:
         print('Could not display cluster_stats plot. Error message was: %s' % str(e))
         return
 
     # Make 2d hist
+    max_tot = 700
     cmap = plt.get_cmap('viridis')
     cmap.set_under('w', 1)
-    bins = [np.arange(0, 700, 25), np.arange(0, 16, 1)]
-    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=1, range=((0, 700), (0, 16)), bins=bins)
+    bins = [np.arange(0, max_tot, 25), np.arange(0, 16, 1)]
+    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=0.000001, range=((0, max_tot), (0, 16)), bins=bins,
+               normed=True)
 
     # Add box showing filter values
     ax.add_patch(
@@ -414,12 +451,15 @@ def print_cluster_stats(cluster_info, cluster_stats):
 
     ax.set_xticks(bins[0])
     ax.set_yticks(bins[1])
+    #ax.set_xticklabels(np.arange(0, max_tot, 25), minor=False)
+    #ax.set_xticks(np.arange(0, max_tot, 10), minor=True)
     ax.set_ylim(1)
     plt.tick_params(colors='black', )
     plt.grid(b=True, which='both')
     plt.ylabel('Cluster Size (pixels)')
     plt.xlabel('Cluster Total ToT (A.U)')
-    plt.colorbar()
+    cbar = plt.colorbar()
+    cbar.set_label('Normalised occurrence', rotation=270)
 
     fig, ax = plt.subplots()
     plt.xlabel('Cluster Total ToT (A.U)')
