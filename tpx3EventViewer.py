@@ -73,7 +73,11 @@ def main():
     else:
         data = data[()]
 
-    # Determine frame indeces
+    if len(data) == 0:
+        print("ERROR: No hits or events present (after filtering). This would result in an empty frame.")
+        exit(1)
+
+    # Determine frame indices
     frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
 
     if settings.spidr_stats:
