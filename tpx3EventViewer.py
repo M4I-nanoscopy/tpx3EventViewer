@@ -87,7 +87,7 @@ def main():
     frames = list()
     for frame_idx in frames_idx:
         frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
-                               settings.power_spectrum, shape))
+                               settings.power_spectrum, shape, settings.super_res))
 
     # Output
     if settings.t:
@@ -132,6 +132,7 @@ def parse_arguments():
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
+    parser.add_argument("--super_res", metavar='N', type=int, default=0, help="Up scale the amount of pixels by N factor")
 
     settings = parser.parse_args()
 
@@ -308,17 +309,25 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     return frames
 
 
-def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape):
+def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution):
+    x = frame['x']
+    y = frame['y']
+
+    if super_resolution > 0:
+        x = x * super_resolution
+        y = y * super_resolution
+        shape = shape * super_resolution
+
     # By casting to int we floor the result to the bottom left pixel it was found in
-    rows = frame['y'].astype(dtype='uint16')
-    cols = frame['x'].astype(dtype='uint16')
+    x = x.astype(dtype='uint16')
+    y = y.astype(dtype='uint16')
 
     if z_source is None:
         data = np.ones(len(frame))
     else:
         data = frame[z_source]
 
-    d = scipy.sparse.coo_matrix((data, (rows, cols)), shape=(shape, shape), dtype=np.uint32)
+    d = scipy.sparse.coo_matrix((data, (y, x)), shape=(shape, shape), dtype=np.uint32)
     f = d.todense()
 
     if rotation != 0:
