@@ -33,14 +33,16 @@ def main():
     if settings.hits:
         source = 'hits'
 
-        if not source in f:
-            print("ERROR: No /hits dataset present in file (%s). Did you mean without --hits to display events?")
+        if source not in f:
+            print(
+                "ERROR: No /hits dataset present in file (%s). Did you mean without --hits to display events?" % settings.FILE)
             exit(1)
     else:
         source = 'events'
 
-        if not source in f:
-            print("ERROR: No /events dataset present in file (%s). Did you mean to use --hits to display hits?")
+        if source not in f:
+            print(
+                "ERROR: No /events dataset present in file (%s). Did you mean to use --hits to display hits?" % settings.FILE)
             exit(1)
 
     data = f[source]
@@ -66,7 +68,7 @@ def main():
         data = data[()]
 
         if settings.tot_threshold > 0:
-            data = data[data['ToT'] > settings.tot_threshold ]
+            data = data[data['ToT'] > settings.tot_threshold]
 
         if settings.tot_limit < 1023:
             data = data[data['ToT'] < settings.tot_limit]
@@ -132,7 +134,8 @@ def parse_arguments():
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
-    parser.add_argument("--super_res", metavar='N', type=int, default=0, help="Up scale the amount of pixels by N factor")
+    parser.add_argument("--super_res", metavar='N', type=int, default=0,
+                        help="Up scale the amount of pixels by N factor")
 
     settings = parser.parse_args()
 
@@ -464,8 +467,8 @@ def print_cluster_stats(cluster_info, cluster_stats):
 
     ax.set_xticks(bins[0])
     ax.set_yticks(bins[1])
-    #ax.set_xticklabels(np.arange(0, max_tot, 25), minor=False)
-    #ax.set_xticks(np.arange(0, max_tot, 10), minor=True)
+    # ax.set_xticklabels(np.arange(0, max_tot, 25), minor=False)
+    # ax.set_xticks(np.arange(0, max_tot, 10), minor=True)
     ax.set_ylim(1)
     plt.tick_params(colors='black', )
     plt.grid(b=True, which='both')
