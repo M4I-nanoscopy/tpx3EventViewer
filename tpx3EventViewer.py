@@ -53,7 +53,7 @@ def main():
 
     # Get z_source
     z_source = None
-    if settings.hits_tot:
+    if settings.hits_tot or settings.hits_tot_avg:
         z_source = 'ToT'
     elif settings.hits_toa:
         z_source = 'cToA'
@@ -89,7 +89,7 @@ def main():
     frames = list()
     for frame_idx in frames_idx:
         frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
-                               settings.power_spectrum, shape, settings.super_res))
+                               settings.power_spectrum, shape, settings.super_res, settings.hits_tot_avg))
 
     # Output
     if settings.t:
@@ -125,6 +125,7 @@ def parse_arguments():
     parser.add_argument("--flip_y", action='store_true', help="Flip image in Y")
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
+    parser.add_argument("--hits_tot_avg", action='store_true', help="Use hits in average ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
@@ -193,6 +194,7 @@ def show(frames, animate):
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
     im = ax.imshow(frame, vmin=min5, vmax=max95)
+    ax.format_coord = lambda x,y: '%3.2f, %3.2f, %10d' % (x,y,frame[int(y+0.5),int(x+0.5)])
     fig.colorbar(im)
 
     def update_frame(val):
@@ -312,7 +314,7 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     return frames
 
 
-def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution):
+def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution, normalize):
     x = frame['x']
     y = frame['y']
 
@@ -332,6 +334,13 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
 
     d = scipy.sparse.coo_matrix((data, (y, x)), shape=(shape, shape), dtype=np.uint32)
     f = d.todense()
+
+    # Normalize (for example ToT average) over counts received
+    if normalize:
+        data = np.ones(len(frame))
+        d = scipy.sparse.coo_matrix((data, (y, x)), shape=(shape, shape), dtype=np.uint32)
+        n = d.todense() + 1
+        f = np.divide(f, n)
 
     if rotation != 0:
         f = np.rot90(f, k=rotation)
