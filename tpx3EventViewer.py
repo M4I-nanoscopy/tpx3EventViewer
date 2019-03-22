@@ -25,9 +25,13 @@ def main():
     f = h5py.File(settings.FILE, 'r')
 
     if settings.cluster_stats:
-        # TODO: Check for existence of these datasets, also this exit() here is not pretty
-        print_cluster_stats(f['cluster_info'], f['cluster_stats'])
-        exit(0)
+        if 'cluster_info' not in f or 'cluster_stats' not in f:
+            print(
+                "ERROR: No /cluster_stats dataset present in file (%s)." % settings.FILE)
+            return 1
+
+        print_cluster_stats(f['cluster_info'], f['cluster_stats'], settings.cluster_stats_tot, settings.cluster_stats_size)
+        return 0
 
     # Get source
     if settings.hits:
@@ -36,14 +40,14 @@ def main():
         if source not in f:
             print(
                 "ERROR: No /hits dataset present in file (%s). Did you mean without --hits to display events?" % settings.FILE)
-            exit(1)
+            return 1
     else:
         source = 'events'
 
         if source not in f:
             print(
                 "ERROR: No /events dataset present in file (%s). Did you mean to use --hits to display hits?" % settings.FILE)
-            exit(1)
+            return 1
 
     data = f[source]
 
@@ -129,7 +133,6 @@ def parse_arguments():
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
-    parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
@@ -137,6 +140,9 @@ def parse_arguments():
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
     parser.add_argument("--super_res", metavar='N', type=int, default=0,
                         help="Up scale the amount of pixels by N factor")
+    parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
+    parser.add_argument("--cluster_stats_tot", type=int, default=None, help="Override cluster_stats ToT limit")
+    parser.add_argument("--cluster_stats_size", type=int, default=None, help="Override cluster_stats size limit")
 
     settings = parser.parse_args()
 
@@ -440,7 +446,7 @@ def plot_timers(hits, frames_idx):
     plt.show()
 
 
-def print_cluster_stats(cluster_info, cluster_stats):
+def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
     stats = cluster_stats[()]
 
     removed = len(cluster_stats) - len(cluster_info)
@@ -457,13 +463,16 @@ def print_cluster_stats(cluster_info, cluster_stats):
         return
 
     # Make 2d hist
-    max_tot = np.percentile(stats[:, 1], 99.99)
-    max_size = np.percentile(stats[:, 0], 99.999)
+    if max_tot is None:
+        max_tot = np.percentile(stats[:, 1], 99.99)
+
+    if max_size is None:
+        max_size = np.percentile(stats[:, 0], 99.999)
 
     cmap = plt.get_cmap('viridis')
     cmap.set_under('w', 1)
     bins = [np.arange(0, max_tot, 25), np.arange(0, max_size, 1)]
-    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=0.00001, range=((0, max_tot), (0, max_size)), bins=bins,
+    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=0.000001, range=((0, max_tot), (0, max_size)), bins=bins,
                normed=True)
 
     # Add box showing filter values
@@ -481,6 +490,7 @@ def print_cluster_stats(cluster_info, cluster_stats):
     xax.set_major_locator(plt.MultipleLocator(50))
     xax.set_minor_locator(plt.MultipleLocator(25))
     xax.set_tick_params(colors='black', which='major')
+    plt.xlabel('Cluster Combined ToT (A.U)')
 
     # y-axis ticks
     yax = ax.get_yaxis()
@@ -489,20 +499,20 @@ def print_cluster_stats(cluster_info, cluster_stats):
 
     ax.set_ylim(1)
     plt.ylabel('Cluster Size (pixels)')
-    plt.xlabel('Cluster Combined ToT (A.U)')
 
-    # Set grod
+    # Set grid
     plt.grid(b=True, which='both')
 
+    # Colorbar
     cbar = plt.colorbar()
     cbar.set_ticks([])
     cbar.set_label('Normalised occurrence')
 
-    # fig, ax = plt.subplots()
-    # plt.xlabel('Cluster Total ToT (A.U)')
-    # plt.ylabel('Normalised occurrence')
-    # plt.grid()
-    # plt.hist(cluster_stats[:, 1], range=(0, 700), bins=699)
+    fig, ax = plt.subplots()
+    plt.xlabel('Cluster Combined ToT (A.U)')
+    plt.ylabel('Normalised occurrence')
+    plt.grid()
+    plt.hist(cluster_stats[:, 1], range=(0, max_tot), bins=int(max_tot - 1))
 
     plt.show()
 
