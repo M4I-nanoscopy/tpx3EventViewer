@@ -457,11 +457,13 @@ def print_cluster_stats(cluster_info, cluster_stats):
         return
 
     # Make 2d hist
-    max_tot = 700
+    max_tot = np.percentile(stats[:, 1], 99.99)
+    max_size = np.percentile(stats[:, 0], 99.999)
+
     cmap = plt.get_cmap('viridis')
     cmap.set_under('w', 1)
-    bins = [np.arange(0, max_tot, 25), np.arange(0, 16, 1)]
-    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=0.000001, range=((0, max_tot), (0, 16)), bins=bins,
+    bins = [np.arange(0, max_tot, 25), np.arange(0, max_size, 1)]
+    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=0.00001, range=((0, max_tot), (0, max_size)), bins=bins,
                normed=True)
 
     # Add box showing filter values
@@ -474,23 +476,33 @@ def print_cluster_stats(cluster_info, cluster_stats):
         )
     )
 
-    ax.set_xticks(bins[0])
-    ax.set_yticks(bins[1])
-    # ax.set_xticklabels(np.arange(0, max_tot, 25), minor=False)
-    # ax.set_xticks(np.arange(0, max_tot, 10), minor=True)
-    ax.set_ylim(1)
-    plt.tick_params(colors='black', )
-    plt.grid(b=True, which='both')
-    plt.ylabel('Cluster Size (pixels)')
-    plt.xlabel('Cluster Total ToT (A.U)')
-    cbar = plt.colorbar()
-    cbar.set_label('Normalised occurrence', rotation=270)
+    # x-axis ticks
+    xax = ax.get_xaxis()
+    xax.set_major_locator(plt.MultipleLocator(50))
+    xax.set_minor_locator(plt.MultipleLocator(25))
+    xax.set_tick_params(colors='black', which='major')
 
-    fig, ax = plt.subplots()
-    plt.xlabel('Cluster Total ToT (A.U)')
-    plt.ylabel('Normalised occurrence')
-    plt.grid()
-    plt.hist(cluster_stats[:, 1], range=(0, 700), bins=699)
+    # y-axis ticks
+    yax = ax.get_yaxis()
+    yax.set_major_locator(plt.MultipleLocator(1))
+    yax.set_tick_params(colors='black', which='major')
+
+    ax.set_ylim(1)
+    plt.ylabel('Cluster Size (pixels)')
+    plt.xlabel('Cluster Combined ToT (A.U)')
+
+    # Set grod
+    plt.grid(b=True, which='both')
+
+    cbar = plt.colorbar()
+    cbar.set_ticks([])
+    cbar.set_label('Normalised occurrence')
+
+    # fig, ax = plt.subplots()
+    # plt.xlabel('Cluster Total ToT (A.U)')
+    # plt.ylabel('Normalised occurrence')
+    # plt.grid()
+    # plt.hist(cluster_stats[:, 1], range=(0, 700), bins=699)
 
     plt.show()
 
