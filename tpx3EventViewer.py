@@ -63,6 +63,8 @@ def main():
         z_source = 'cToA'
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
+    elif settings.events_sumtot or settings.events_sumtot_avg:
+        z_source = 'sumToT'
 
     # Get shape of matrix
     shape = data.attrs['shape']
@@ -93,7 +95,7 @@ def main():
     frames = list()
     for frame_idx in frames_idx:
         frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
-                               settings.power_spectrum, shape, settings.super_res, settings.hits_tot_avg))
+                               settings.power_spectrum, shape, settings.super_res, settings.hits_tot_avg or settings.events_sumtot_avg))
 
     # Output
     if settings.t:
@@ -135,6 +137,8 @@ def parse_arguments():
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
+    parser.add_argument("--events_sumtot", action='store_true', help="Show event in sumToT")
+    parser.add_argument("--events_sumtot_avg", action='store_true', help="Show event in average sumToT")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
