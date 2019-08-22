@@ -30,7 +30,8 @@ def main():
                 "ERROR: No /cluster_stats dataset present in file (%s)." % settings.FILE)
             return 1
 
-        print_cluster_stats(f['cluster_info'], f['cluster_stats'], settings.cluster_stats_tot, settings.cluster_stats_size)
+        print_cluster_stats(f['cluster_info'], f['cluster_stats'], settings.cluster_stats_tot,
+                            settings.cluster_stats_size)
         return 0
 
     # Get source
@@ -58,7 +59,7 @@ def main():
     # Get z_source
     z_source = None
     if settings.hits_tot or settings.hits_tot_avg:
-        z_source = 'ToT'
+        z_source = 'fToA'
     elif settings.hits_toa:
         z_source = 'cToA'
     elif settings.hits_spidr:
@@ -95,7 +96,8 @@ def main():
     frames = list()
     for frame_idx in frames_idx:
         frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
-                               settings.power_spectrum, shape, settings.super_res, settings.hits_tot_avg or settings.events_sumtot_avg))
+                               settings.power_spectrum, shape, settings.super_res,
+                               settings.hits_tot_avg or settings.events_sumtot_avg))
 
     # Output
     if settings.t:
@@ -204,7 +206,7 @@ def show(frames, animate):
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
     im = ax.imshow(frame, vmin=min5, vmax=max95)
-    ax.format_coord = lambda x,y: '%3.2f, %3.2f, %10d' % (x,y,frame[int(y+0.5),int(x+0.5)])
+    ax.format_coord = lambda x, y: '%3.2f, %3.2f, %10d' % (x, y, frame[int(y + 0.5), int(x + 0.5)])
     fig.colorbar(im)
 
     def update_frame(val):
@@ -363,14 +365,14 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
 
     if power_spectrum:
         # Take the fourier transform of the image.
-        F1 = fftpack.fft2(f)
+        f1 = fftpack.fft2(f)
 
         # Now shift the quadrants around so that low spatial frequencies are in
         # the center of the 2D fourier transformed image.
-        F2 = fftpack.fftshift(F1)
+        f2 = fftpack.fftshift(f1)
 
         # Calculate a 2D power spectrum
-        psd2D = np.abs(F2) ** 2
+        psd2D = np.abs(f2) ** 2
 
         return np.log10(psd2D)
     else:
@@ -511,12 +513,6 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
     cbar = plt.colorbar()
     cbar.set_ticks([])
     cbar.set_label('Normalised occurrence')
-
-    fig, ax = plt.subplots()
-    plt.xlabel('Cluster Combined ToT (A.U)')
-    plt.ylabel('Normalised occurrence')
-    plt.grid()
-    plt.hist(cluster_stats[:, 1], range=(0, max_tot), bins=int(max_tot - 1))
 
     plt.show()
 
