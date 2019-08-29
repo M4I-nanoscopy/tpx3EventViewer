@@ -59,9 +59,11 @@ def main():
     # Get z_source
     z_source = None
     if settings.hits_tot or settings.hits_tot_avg:
-        z_source = 'fToA'
+        z_source = 'ToT'
     elif settings.hits_toa:
         z_source = 'cToA'
+    elif settings.hits_ftoa:
+        z_source = 'fToA'
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
     elif settings.events_sumtot or settings.events_sumtot_avg:
@@ -135,6 +137,7 @@ def parse_arguments():
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_tot_avg", action='store_true', help="Use hits in average ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
+    parser.add_argument("--hits_ftoa", action='store_true', help="Use hits in fToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
