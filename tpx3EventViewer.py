@@ -58,7 +58,7 @@ def main():
 
     # Get z_source
     z_source = None
-    if settings.hits_tot or settings.hits_tot_avg:
+    if settings.hits_tot:
         z_source = 'ToT'
     elif settings.hits_toa:
         z_source = 'cToA'
@@ -66,7 +66,7 @@ def main():
         z_source = 'fToA'
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
-    elif settings.events_sumtot or settings.events_sumtot_avg:
+    elif settings.events_sumtot:
         z_source = 'sumToT'
 
     # Get shape of matrix
@@ -99,7 +99,7 @@ def main():
     for frame_idx in frames_idx:
         frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
                                settings.power_spectrum, shape, settings.super_res,
-                               settings.hits_tot_avg or settings.events_sumtot_avg))
+                               settings.normalize))
 
     # Output
     if settings.t:
@@ -135,7 +135,6 @@ def parse_arguments():
     parser.add_argument("--flip_y", action='store_true', help="Flip image in Y")
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
-    parser.add_argument("--hits_tot_avg", action='store_true', help="Use hits in average ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--hits_ftoa", action='store_true', help="Use hits in fToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
@@ -143,7 +142,8 @@ def parse_arguments():
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
     parser.add_argument("--events_sumtot", action='store_true', help="Show event in sumToT")
-    parser.add_argument("--events_sumtot_avg", action='store_true', help="Show event in average sumToT")
+    parser.add_argument("--normalize", action='store_true', help="Normalize ToT, ToA, fTOA or events-sumToT to number "
+                                                                 "of hits/events (the average)")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
