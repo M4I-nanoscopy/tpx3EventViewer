@@ -60,10 +60,12 @@ def main():
     z_source = None
     if settings.hits_tot:
         z_source = 'ToT'
-    elif settings.hits_toa:
+    elif settings.hits_ctoa:
         z_source = 'cToA'
     elif settings.hits_ftoa:
         z_source = 'fToA'
+    elif settings.hits_toa:
+        z_source = 'ToA'
     elif settings.hits_spidr:
         z_source = 'TSPIDR'
     elif settings.events_sumtot:
@@ -136,6 +138,7 @@ def parse_arguments():
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
+    parser.add_argument("--hits_ctoa", action='store_true', help="Use hits in cToA mode")
     parser.add_argument("--hits_ftoa", action='store_true', help="Use hits in fToA mode")
     parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
@@ -175,15 +178,20 @@ def save_tiff(frames, uint32, uint8, filename):
 
             im = Image.fromarray(frame)
         else:
-            # Needs possible clipping to max uint16 values
-            i16 = np.iinfo(np.uint16)
-            if frame.max() > i16.max:
-                print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
-                np.clip(frame, 0, i16.max, frame)
+            if frame.dtype == np.float64:
+                print("INFO: Storing as float32")
+                frame = frame.astype(dtype=np.float32)
+                im = Image.fromarray(frame)
+            else:
+                # Needs possible clipping to max uint16 values
+                i16 = np.iinfo(np.uint16)
+                if frame.max() > i16.max:
+                    print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
+                    np.clip(frame, 0, i16.max, frame)
 
-            frame = frame.astype(dtype=np.uint16)
+                frame = frame.astype(dtype=np.uint16)
 
-            im = Image.fromarray(frame)
+                im = Image.fromarray(frame)
 
         images.append(im)
 
