@@ -86,6 +86,10 @@ def main():
     else:
         data = data[()]
 
+    # Filter to requested chip
+    if settings.chip is not None:
+        data = data[data['chipId'] == settings.chip]
+
     if len(data) == 0:
         print("ERROR: No hits or events present (after filtering). This would result in an empty frame.")
         exit(1)
@@ -144,6 +148,7 @@ def parse_arguments():
     parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
+    parser.add_argument("--chip", type=int, default=None, help="Limit display to certain chip")
     parser.add_argument("--events_sumtot", action='store_true', help="Show event in sumToT")
     parser.add_argument("--normalize", action='store_true', help="Normalize ToT, ToA, fTOA or events-sumToT to number "
                                                                  "of hits/events (the average)")
