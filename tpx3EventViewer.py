@@ -512,7 +512,7 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
     xax.set_major_locator(plt.MultipleLocator(50))
     xax.set_minor_locator(plt.MultipleLocator(25))
     xax.set_tick_params(colors='black', which='major')
-    plt.xlabel('Cluster Combined ToT (A.U)')
+    plt.xlabel('ToT sum (A.U)')
 
     # y-axis ticks
     yax = ax.get_yaxis()
