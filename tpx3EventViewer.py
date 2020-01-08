@@ -503,7 +503,7 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
             (cluster_stats.attrs['cluster_min_sum_tot'], cluster_stats.attrs['cluster_min_size']),  # (x,y)
             cluster_stats.attrs['cluster_max_sum_tot'] - cluster_stats.attrs['cluster_min_sum_tot'],  # width
             cluster_stats.attrs['cluster_max_size'] - cluster_stats.attrs['cluster_min_size'],  # height
-            fill=False, edgecolor='red', linewidth=2
+            fill=False, edgecolor='red', linewidth=2, zorder=2
         )
     )
 
@@ -523,7 +523,7 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
     plt.ylabel('Cluster Size (pixels)')
 
     # Set grid
-    plt.grid(b=True, which='both')
+    plt.grid(b=True, which='both', zorder=1)
 
     # Colorbar
     cbar = plt.colorbar()
