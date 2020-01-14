@@ -18,6 +18,12 @@ VERSION = '0.5.1'
 spidr_tick = 26.843 / 65536.
 ticks_second = 1. / spidr_tick
 
+plt.rcParams.update({
+    "font.size": 12,
+    "font.family": 'sans-serif',
+    "svg.fonttype": 'none'
+})
+
 
 def main():
     settings = parse_arguments()
@@ -512,7 +518,7 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
     xax.set_major_locator(plt.MultipleLocator(50))
     xax.set_minor_locator(plt.MultipleLocator(25))
     xax.set_tick_params(colors='black', which='major')
-    plt.xlabel('ToT sum (A.U)')
+    plt.xlabel('ToT Sum (A.U)')
 
     # y-axis ticks
     yax = ax.get_yaxis()
@@ -530,6 +536,7 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
     cbar.set_ticks([])
     cbar.set_label('Normalised occurrence')
 
+    plt.tight_layout()
     plt.show()
 
 
