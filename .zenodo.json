@@ -1,5 +1,7 @@
 {
-  "license": "MIT License",
+  "license": {
+      "id": "MIT"
+    },
   "creators": [
     {
       "name": "van Schayck, J. Paul",
