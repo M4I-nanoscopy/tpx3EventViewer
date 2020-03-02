@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 ## License
 
-All rights reserved
+MIT license
 
 ## Authors
 
