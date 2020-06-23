@@ -9,6 +9,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse
+import mrcfile
 from matplotlib.widgets import Slider, CheckButtons
 from matplotlib import animation, patches
 from PIL import Image
@@ -122,8 +123,16 @@ def main():
 
         save_tiff(frames, settings.uint32, settings.uint8, filename)
 
+    if settings.m:
+        if settings.f:
+            filename = settings.f
+        else:
+            filename = os.path.splitext(settings.FILE)[0] + ".mrc"
+
+        save_mrc(frames, filename)
+
     if not settings.n:
-        show(frames, settings.m)
+        show(frames, settings.animation)
 
 
 def parse_arguments():
@@ -137,11 +146,12 @@ def parse_arguments():
     parser.add_argument("-t", action='store_true', help="Store uint16 .tif file")
     parser.add_argument("--uint32", action='store_true', help="Store uint32 tif (not supported by all readers!)")
     parser.add_argument("--uint8", action='store_true', help="Store uint8 tif (supported by almost all readers)")
+    parser.add_argument("-m", action='store_true', help="Store as mrc file")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
-    parser.add_argument("-m", action='store_true', help="Store as animated mp4 movie")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
                                                                       "-1 anti-clockwise, 0: none). Default: 0")
+    parser.add_argument("--animation", action='store_true', help="Store as animated mp4 file")
     parser.add_argument("--power_spectrum", action='store_true', help="Show power spectrum")
     parser.add_argument("--flip_x", action='store_true', help="Flip image in X")
     parser.add_argument("--flip_y", action='store_true', help="Flip image in Y")
@@ -170,6 +180,23 @@ def parse_arguments():
     settings = parser.parse_args()
 
     return settings
+
+
+def save_mrc(frames, filename):
+    data = np.array(frames)
+
+    data = np.flip(data, axes=(1,2))
+
+    # Needs possible clipping to max uint16 values
+    i16 = np.iinfo(np.uint16)
+    if data.max() > i16.max:
+        print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
+        np.clip(data, 0, i16.max, data)
+
+    data = data.astype(np.uint16)
+
+    with mrcfile.new(filename, overwrite=True) as mrc:
+        mrc.set_data(data)
 
 
 def save_tiff(frames, uint32, uint8, filename):
