@@ -32,13 +32,11 @@ def main():
     f = h5py.File(settings.FILE, 'r')
 
     if settings.cluster_stats:
-        if 'cluster_info' not in f or 'cluster_stats' not in f:
-            print(
-                "ERROR: No /cluster_stats dataset present in file (%s)." % settings.FILE)
+        if 'clusters' not in f:
+            print("ERROR: No /cluster dataset present in file (%s)." % settings.FILE)
             return 1
 
-        print_cluster_stats(f['cluster_info'], f['cluster_stats'], settings.cluster_stats_tot,
-                            settings.cluster_stats_size)
+        print_cluster_stats(f['clusters'], settings.cluster_stats_tot, settings.cluster_stats_size)
         return 0
 
     # Get source
@@ -457,13 +455,13 @@ def plot_timers(hits, frames_idx):
     plt.show()
 
 
-def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
-    stats = cluster_stats[()]
+def print_cluster_stats(clusters, max_tot, max_size):
+    print("WARNING: Limiting to first 1M clusters")
+    limit = 1000000
+    cluster_subset = clusters[0:limit, 0, :]
 
-    removed = len(cluster_stats) - len(cluster_info)
-    removed_percentage = float(removed / float(len(cluster_info) + removed)) * 100
-
-    print("Removed %d clusters and single hits (%d percent)" % (removed, removed_percentage))
+    tot = np.sum(cluster_subset, axis=(1, 2))
+    size = np.count_nonzero(cluster_subset, axis=(1, 2))
 
     # Figure
     try:
@@ -475,23 +473,23 @@ def print_cluster_stats(cluster_info, cluster_stats, max_tot, max_size):
 
     # Make 2d hist
     if max_tot is None:
-        max_tot = np.percentile(stats[:, 1], 99.99)
+        max_tot = np.percentile(tot, 99.99)
 
     if max_size is None:
-        max_size = np.percentile(stats[:, 0], 99.999)
+        max_size = np.percentile(size, 99.999)
 
     cmap = plt.get_cmap('viridis')
     cmap.set_under('w', 1)
     bins = [np.arange(0, max_tot, 25), np.arange(0, max_size, 1)]
-    plt.hist2d(stats[:, 1], stats[:, 0], cmap=cmap, vmin=0.000001, range=((0, max_tot), (0, max_size)), bins=bins,
-               normed=True)
+    plt.hist2d(tot, size, cmap=cmap, vmin=0.000001, range=((0, max_tot), (0, max_size)), bins=bins,
+               density=True)
 
     # Add box showing filter values
     ax.add_patch(
         patches.Rectangle(
-            (cluster_stats.attrs['cluster_min_sum_tot'], cluster_stats.attrs['cluster_min_size']),  # (x,y)
-            cluster_stats.attrs['cluster_max_sum_tot'] - cluster_stats.attrs['cluster_min_sum_tot'],  # width
-            cluster_stats.attrs['cluster_max_size'] - cluster_stats.attrs['cluster_min_size'],  # height
+            (clusters.attrs['cluster_min_sum_tot'], clusters.attrs['cluster_min_size']),  # (x,y)
+            clusters.attrs['cluster_max_sum_tot'] - clusters.attrs['cluster_min_sum_tot'],  # width
+            clusters.attrs['cluster_max_size'] - clusters.attrs['cluster_min_size'],  # height
             fill=False, edgecolor='red', linewidth=2, zorder=2
         )
     )
