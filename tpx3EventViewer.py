@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import _tkinter
 from matplotlib.ticker import EngFormatter
 from scipy import fftpack
@@ -15,9 +14,10 @@ from matplotlib import animation, patches
 from PIL import Image
 import os
 
-VERSION = '0.5.1'
-spidr_tick = 26.843 / 65536.
-ticks_second = 1. / spidr_tick
+VERSION = '2.0.0'
+# A tpx3_tick is 1.56 ns (the Timepix3 fine ToA resolution)
+tpx3_tick = 26.843 / pow(2, 34)
+ticks_second = 1. / tpx3_tick
 
 plt.rcParams.update({
     "font.size": 12,
@@ -59,24 +59,15 @@ def main():
 
     data = f[source]
 
-    # TODO: Enable this check later
-    # if not data.attrs['version'] != VERSION:
-    #     print "WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (data.attrs['version'], VERSION)
+    if data.attrs['version'] != VERSION:
+         print("WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (data.attrs['version'], VERSION))
 
     # Get z_source
     z_source = None
     if settings.hits_tot:
         z_source = 'ToT'
-    elif settings.hits_ctoa:
-        z_source = 'cToA'
-    elif settings.hits_ftoa:
-        z_source = 'fToA'
     elif settings.hits_toa:
         z_source = 'ToA'
-    elif settings.hits_spidr:
-        z_source = 'TSPIDR'
-    elif settings.events_sumtot:
-        z_source = 'sumToT'
 
     # Get shape of matrix
     shape = data.attrs['shape']
@@ -99,13 +90,14 @@ def main():
 
     if len(data) == 0:
         print("ERROR: No hits or events present (after filtering). This would result in an empty frame.")
-        exit(1)
+        return 1
 
     # Determine frame indices
     frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
 
-    if settings.spidr_stats:
-        spidr_time_stats(data, frames_idx)
+    if settings.timing_stats:
+        timing_stats(data, frames_idx)
+        return 0
 
     # Calculate all frames
     frames = list()
@@ -158,14 +150,10 @@ def parse_arguments():
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
-    parser.add_argument("--hits_ctoa", action='store_true', help="Use hits in cToA mode")
-    parser.add_argument("--hits_ftoa", action='store_true', help="Use hits in fToA mode")
-    parser.add_argument("--hits_spidr", action='store_true', help="Use hits in SPIDR mode")
-    parser.add_argument("--spidr_stats", action='store_true', help="Show SPIDR stats")
+    parser.add_argument("--timing_stats", action='store_true', help="Show timing stats")
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
     parser.add_argument("--chip", type=int, default=None, help="Limit display to certain chip")
-    parser.add_argument("--events_sumtot", action='store_true', help="Show event in sumToT")
     parser.add_argument("--normalize", action='store_true', help="Normalize ToT, ToA, fTOA or events-sumToT to number "
                                                                  "of hits/events (the average)")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
@@ -300,28 +288,29 @@ def show(frames, animate):
 
     if animate:
         # Animate
-        anim = animation.FuncAnimation(fig, animate_frame, frames=len(frames) - 1, interval=200)
+        anim = animation.FuncAnimation(fig, animate_frame, frames=len(frames) - 1, interval=1000)
         # Save
         anim.save('animation.mp4', fps=10, extra_args=['-vcodec', 'libx264'])
     else:
         plt.show()
 
 
+# This function assumes the data to be sorted on ToA!
 def calculate_frames_idx(data, exposure, start_time, end_time):
     frames = list()
 
-    spidr = data['TSPIDR']
+    toa = data['ToA']
 
     if start_time > 0:
-        start = spidr[0] + ticks_second * start_time
-        start_idx = np.argmax(spidr > start)
+        start = toa[0] + ticks_second * start_time
+        start_idx = np.argmax(toa > start)
     else:
-        start = spidr[0]
+        start = toa[0]
         start_idx = 0
 
     if end_time > 0:
-        end_final = spidr[0] + ticks_second * end_time
-        end_final_idx = np.argmax(spidr > end_final)
+        end_final = toa[0] + ticks_second * end_time
+        end_final_idx = np.argmax(toa > end_final)
         if end_final_idx == 0:
             end_final_idx = len(data) - 1
     else:
@@ -330,29 +319,10 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     end = start + ticks_second * exposure
 
     if exposure > 0:
-
-        reset = False
-        # Calculate all frames indeces
+        # Calculate all frames indices
         while start_idx < end_final_idx:
-            if reset:
-                end_idx = np.argmax((spidr > end) & (spidr < spidr[0] - 10))
+            end_idx = np.argmax(toa > end)
 
-                # True end
-                end = spidr[end_idx]
-
-            elif end > 65535:
-                remainder = start + ticks_second * exposure - 65535
-                end_idx = np.argmax((spidr > remainder) & (spidr < spidr[0] - 10))
-
-                end = spidr[end_idx]
-                reset = True
-            else:
-                end_idx = np.argmax(spidr > end)
-
-                # True end
-                end = spidr[end_idx]
-
-            # Correct for np.argmax returning 0 when going past the end
             if end_idx == 0:
                 end_idx = len(data) - 1
 
@@ -428,46 +398,32 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
         return f
 
 
-def smooth_cross(f):
-    mean = f[f > 10].mean()
-    stdev = f[f > 10].std()
+# Display some stats about the ToA timer
+def timing_stats(hits, frames_idx):
+    global tpx3_tick
+    toa = hits['ToA']
 
-    f[254:257, 0:516] = [f[253, 0:516], f[253, 0:516], f[253, 0:516]]
-    f[257:260, 0:516] = [f[261, 0:516], f[261, 0:516], f[261, 0:516]]
+    print("ToA time start: %d" % toa[0])
+    print("ToA time end: %d" % toa[-1])
+    print("ToA time min: %d" % toa.min())
+    print("ToA time max: %d" % toa.max())
 
-    return f
-
-
-# Display some stats about the SPIDR global time
-def spidr_time_stats(hits, frames_idx):
-    # Load all hits into memory
-    hits = hits[()]
-
-    spidr = hits['TSPIDR']
-
-    tick = 26.843 / 65536.
-
-    print("SPIDR time start: %d" % spidr[0])
-    print("SPIDR time end: %d" % spidr[-1])
-    print("SPIDR time min: %d" % spidr.min())
-    print("SPIDR time max: %d" % spidr.max())
-
-    if spidr.max() > 65535 - 100:
-        ticks = 65535 - int(spidr[0]) + int(spidr[-1])
+    if toa.max() > 65535 - 100:
+        ticks = 65535 - int(toa[0]) + int(toa[-1])
     else:
-        ticks = int(spidr[-1]) - int(spidr[0])
+        ticks = int(toa[-1]) - int(toa[0])
 
-    print("SPIDR exposure time (estimate): %.5f" % (ticks * tick))
+    print("Exposure time (seconds): %.5f" % (ticks * tpx3_tick))
 
-    print("Frame start time (idx %d): %d" % (frames_idx[0]['start_idx'], spidr[frames_idx[0]['start_idx']]))
-    print("Frame end time (idx %d): %d" % (frames_idx[0]['end_idx'], spidr[frames_idx[0]['end_idx']]))
+    print("Frame start time (idx %d): %d" % (frames_idx[0]['start_idx'], toa[frames_idx[0]['start_idx']]))
+    print("Frame end time (idx %d): %d" % (frames_idx[0]['end_idx'], toa[frames_idx[0]['end_idx']]))
 
-    print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000.) / (ticks * tick)))
+    print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000.) / (ticks * tpx3_tick)))
 
     plot_timers(hits, frames_idx)
 
 
-# Plot SPIDR time of entire run
+# Plot ToA timer of entire run against hits
 def plot_timers(hits, frames_idx):
     fig, ax = plt.subplots()
 
@@ -475,22 +431,22 @@ def plot_timers(hits, frames_idx):
 
     for chip in range(0, 4):
         # Index frame to only the particular chip
-        chip_events = hits[[hits['chipId'] == chip]]
-        chip_index = index[[hits['chipId'] == chip]]
+        chip_events = hits[hits['chipId'] == chip]
+        chip_index = index[hits['chipId'] == chip]
 
         # Get only every 1000nth hit
-        spidr = chip_events['TSPIDR'][1::1000]
-        spidr_index = chip_index[1::1000]
+        toa = chip_events['ToA'][1::1000]
+        toa_index = chip_index[1::1000]
 
-        plt.scatter(spidr_index, spidr, label='Chip %d' % chip)
+        plt.scatter(toa_index, toa, label='Chip %d' % chip)
 
-    plt.title('SPIDR time (every 1000nth hit)')
+    plt.title('ToA time (every 1000nth hit)')
 
     formatter0 = EngFormatter(unit='hit')
     ax.xaxis.set_major_formatter(formatter0)
 
     plt.xlabel('Hit index')
-    plt.ylabel('SPIDR time ticks')
+    plt.ylabel('Time ticks')
     plt.legend()
 
     # Frame start and end time
