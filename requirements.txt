@@ -1,6 +1,6 @@
-h5py>=2.7.1
-matplotlib>=2.1.0
-Pillow>=4.3.0
-scipy>=0.19.0
-numpy>=1.13.0
-configparser>=3.5
+h5py>=2.8.0,<3.0.0
+matplotlib>=3.0.0,<4.0.0
+Pillow>7.0.0,<9.00
+scipy>1.4.0,<2.0.0
+numpy>=1.16.0,<1.19.0
+mrcfile>1.0.0,<2.0.0
