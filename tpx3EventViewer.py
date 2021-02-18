@@ -13,6 +13,7 @@ from matplotlib.widgets import Slider, CheckButtons
 from matplotlib import animation, patches
 from PIL import Image
 import os
+import copy
 
 VERSION = '2.0.0'
 # A tpx3_tick is 1.56 ns (the Timepix3 fine ToA resolution)
@@ -478,7 +479,7 @@ def print_cluster_stats(clusters, max_tot, max_size):
     if max_size is None:
         max_size = np.percentile(size, 99.999)
 
-    cmap = plt.get_cmap('viridis')
+    cmap = copy.copy(plt.get_cmap('viridis'))
     cmap.set_under('w', 1)
     bins = [np.arange(0, max_tot, 25), np.arange(0, max_size, 1)]
     plt.hist2d(tot, size, cmap=cmap, vmin=0.000001, range=((0, max_tot), (0, max_size)), bins=bins,
