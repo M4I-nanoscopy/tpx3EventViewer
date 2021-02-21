@@ -16,8 +16,8 @@ import os
 import copy
 
 VERSION = '2.0.0'
-# A tpx3_tick is 1.56 ns (the Timepix3 fine ToA resolution)
-tpx3_tick = 26.843 / pow(2, 34)
+# The Timepix3 fine ToA clock is 640 Mhz. This is equal to a tick length of 1.5625 ns.
+tpx3_tick = 1.5625e-09
 ticks_second = 1. / tpx3_tick
 
 plt.rcParams.update({
