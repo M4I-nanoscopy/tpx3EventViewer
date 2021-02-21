@@ -98,12 +98,17 @@ def main():
         timing_stats(data, frames_idx)
         return 0
 
+    gain = None
+    if settings.gain:
+        with mrcfile.open(settings.gain) as gain_file:
+            gain = gain_file.data
+
     # Calculate all frames
     frames = list()
     for frame_idx in frames_idx:
         frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
                                settings.power_spectrum, shape, settings.super_res,
-                               settings.normalize))
+                               settings.normalize, gain))
 
     # Output
     if settings.t:
@@ -142,6 +147,7 @@ def parse_arguments():
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
                                                                       "-1 anti-clockwise, 0: none). Default: 0")
+    parser.add_argument("-g", "--gain", help="MRC file with gain correction.")
     parser.add_argument("--animation", action='store_true', help="Store as animated mp4 file")
     parser.add_argument("--power_spectrum", action='store_true', help="Show power spectrum")
     parser.add_argument("--flip_x", action='store_true', help="Flip image in X")
@@ -153,8 +159,7 @@ def parse_arguments():
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
     parser.add_argument("--chip", type=int, default=None, help="Limit display to certain chip")
-    parser.add_argument("--normalize", action='store_true', help="Normalize ToT, ToA, fTOA or events-sumToT to number "
-                                                                 "of hits/events (the average)")
+    parser.add_argument("--normalize", action='store_true', help="Normalize to the average (useful for showing ToT)")
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
@@ -344,7 +349,7 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     return frames
 
 
-def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution, normalize):
+def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution, normalize, gain):
     x = frame['x']
     y = frame['y']
 
@@ -371,6 +376,9 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
         d = scipy.sparse.coo_matrix((data, (y, x)), shape=(shape, shape), dtype=np.uint32)
         n = d.todense() + 1
         f = np.divide(f, n)
+
+    if gain is not None:
+        f = np.multiply(f, gain)
 
     if rotation != 0:
         f = np.rot90(f, k=rotation)
