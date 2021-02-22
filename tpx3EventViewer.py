@@ -128,7 +128,7 @@ def main():
         save_mrc(frames, filename)
 
     if not settings.n:
-        show(frames, settings.animation)
+        show(frames, settings.animation, os.path.basename(settings.FILE))
 
 
 def parse_arguments():
@@ -177,11 +177,11 @@ def parse_arguments():
 def save_mrc(frames, filename):
     data = np.array(frames)
 
-    data = np.flip(data, axes=(1,2))
+    data = np.flip(data, axis=(1,))
 
     # Needs possible clipping to max uint16 values
     i16 = np.iinfo(np.uint16)
-    if data.max() > i16.max:
+    if data.max(initial=0) > i16.max:
         print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
         np.clip(data, 0, i16.max, data)
 
@@ -228,7 +228,7 @@ def save_tiff(frames, uint32, uint8, filename):
     images[0].save(filename, save_all=True, append_images=images[1:])
 
 
-def show(frames, animate):
+def show(frames, animate, name):
     # Calculate threshold values
     frame = frames[0]
     min5 = np.percentile(frame, 5)
@@ -242,7 +242,7 @@ def show(frames, animate):
         dpi = 150
 
     fig = plt.figure(dpi=dpi)
-    fig.canvas.set_window_title('tpx3EventViewer')
+    fig.canvas.set_window_title(name)
     ax = fig.add_subplot(111)
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
