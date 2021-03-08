@@ -185,13 +185,17 @@ def save_mrc(frames, filename):
 
     data = np.flip(data, axis=(1,))
 
-    # Needs possible clipping to max uint16 values
-    i16 = np.iinfo(np.uint16)
-    if data.max(initial=0) > i16.max:
-        print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
-        np.clip(data, 0, i16.max, data)
-
-    data = data.astype(np.uint16)
+    if data.dtype == np.float64 or data.dtype == np.float32:
+        print("INFO: Storing as float32")
+        data = data.astype(dtype=np.float32)
+    else:
+        # Needs possible clipping to max uint16 values
+        i16 = np.iinfo(np.uint16)
+        if data.max(initial=0) > i16.max:
+            print("WARNING: Cannot fit in uint16. Clipping values to uint16 max.")
+            np.clip(data, 0, i16.max, data)
+        print("INFO: Storing as uint16")
+        data = data.astype(np.uint16)
 
     with mrcfile.new(filename, overwrite=True) as mrc:
         mrc.set_data(data)
