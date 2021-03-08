@@ -67,6 +67,10 @@ def main():
         z_source = 'ToT'
     elif settings.hits_toa:
         z_source = 'ToA'
+    elif settings.events_sumtot:
+        z_source = 'sumToT'
+    elif settings.events_nhits:
+        z_source = 'nHits'
 
     # Get shape of matrix
     shape = data.attrs['shape']
@@ -155,6 +159,8 @@ def parse_arguments():
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
+    parser.add_argument("--events_sumtot", action='store_true', help="Use events in sumToT mode")
+    parser.add_argument("--events_nhits", action='store_true', help="Use events in nHits mode")
     parser.add_argument("--timing_stats", action='store_true', help="Show timing stats")
     parser.add_argument("--tot_threshold", type=int, default=0, help="In hits show only hits above ToT threshold")
     parser.add_argument("--tot_limit", type=int, default=1023, help="In hits show only hits below ToT limit")
