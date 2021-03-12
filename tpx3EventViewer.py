@@ -318,6 +318,9 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     if start_time > 0:
         start = toa[0] + ticks_second * start_time
         start_idx = np.argmax(toa > start)
+
+        if start_idx == 0:
+            print("WARNING: Start time not found in data. Starting at time 0")
     else:
         start = toa[0]
         start_idx = 0
