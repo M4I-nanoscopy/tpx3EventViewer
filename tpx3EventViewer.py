@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 import _tkinter
+import concurrent.futures
+import multiprocessing
+
 from matplotlib.ticker import EngFormatter
 from scipy import fftpack
 import argparse
@@ -14,6 +17,8 @@ from matplotlib import animation, patches
 from PIL import Image
 import os
 import copy
+
+import tqdm
 
 VERSION = '2.0.0'
 # The Timepix3 fine ToA clock is 640 Mhz. This is equal to a tick length of 1.5625 ns.
@@ -107,10 +112,15 @@ def main():
         with mrcfile.open(settings.gain) as gain_file:
             gain = gain_file.data
 
+    if settings.gauss:
+        frame_fn = to_frame_gaussian
+    else:
+        frame_fn = to_frame
+
     # Calculate all frames
     frames = list()
     for frame_idx in frames_idx:
-        frames.append(to_frame(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
+        frames.append(frame_fn(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
                                settings.power_spectrum, shape, settings.super_res,
                                settings.normalize, gain))
 
@@ -174,6 +184,7 @@ def parse_arguments():
     parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
     parser.add_argument("--cluster_stats_tot", type=int, default=None, help="Override cluster_stats ToT limit")
     parser.add_argument("--cluster_stats_size", type=int, default=None, help="Override cluster_stats size limit")
+    parser.add_argument("--gauss", action='store_true', help='Place back gaussian')
 
     settings = parser.parse_args()
 
@@ -256,7 +267,13 @@ def show(frames, animate, name):
     ax = fig.add_subplot(111)
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
-    im = ax.imshow(frame, vmin=min5, vmax=max95)
+    # This makes pixels start at the top left, and at 0,0. This makes the most sense when compared to other
+    # applications. It also matches the sub pixel positions.
+    # https://matplotlib.org/stable/tutorials/intermediate/imshow_extent.html
+    origin = 'upper'
+    extent = [0, frame.shape[0], frame.shape[1], 0]
+
+    im = ax.imshow(frame, vmin=min5, vmax=max95, extent=extent, origin=origin)
     ax.format_coord = lambda x, y: '%3.2f, %3.2f, %10d' % (x, y, frame[int(y + 0.5), int(x + 0.5)])
     fig.colorbar(im)
 
@@ -416,6 +433,40 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
         return np.log10(psd2D)
     else:
         return f
+
+
+r = h5py.File('/home/paul/tpx3/tpx3EventViewer/gauss-%0.2f.h5' % 0.50, 'r')
+distribution = r['distribution'][()]
+
+
+def event_to_gauss(x, y):
+    global distribution
+    return distribution[int(y%1*100), int(x%1*100)]
+
+
+def frame_gaussian(frame):
+    f = np.zeros((512 + 2 * 3, 512 + 2 * 3))
+
+    for idx, e in enumerate(frame):
+        Z = event_to_gauss(e['x'], e['y'])
+
+        x_base = int(e['x']) + 3
+        y_base = int(e['y']) + 3
+
+        f[y_base - 1: y_base + 2, x_base - 1: x_base + 2] += Z
+
+    return f[3:515, 3:515]
+
+
+def to_frame_gaussian(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution, normalize, gain):
+    split = np.array_split(frame, 100)
+
+    # We can use a with statement to ensure threads are cleaned up promptly
+    with multiprocessing.Pool(processes=8) as pool:
+        results = list(tqdm.tqdm(pool.imap(frame_gaussian, split), total=len(split)))
+        f = np.sum(results, axis=0)
+
+    return f
 
 
 # Display some stats about the ToA timer
