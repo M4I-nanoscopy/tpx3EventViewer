@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import _tkinter
-import concurrent.futures
 import multiprocessing
+from functools import partial
 
 from matplotlib.ticker import EngFormatter
 from scipy import fftpack
@@ -19,6 +19,8 @@ import os
 import copy
 
 import tqdm
+
+from gaussians import event_gaussian, get_gauss_distribution
 
 VERSION = '2.0.0'
 # The Timepix3 fine ToA clock is 640 Mhz. This is equal to a tick length of 1.5625 ns.
@@ -64,7 +66,8 @@ def main():
     data = f[source]
 
     if data.attrs['version'] != VERSION:
-         print("WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (data.attrs['version'], VERSION))
+        print("WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (
+            data.attrs['version'], VERSION))
 
     # Get z_source
     z_source = None
@@ -112,17 +115,17 @@ def main():
         with mrcfile.open(settings.gain) as gain_file:
             gain = gain_file.data
 
-    if settings.gauss:
-        frame_fn = to_frame_gaussian
-    else:
-        frame_fn = to_frame
-
     # Calculate all frames
     frames = list()
     for frame_idx in frames_idx:
-        frames.append(frame_fn(frame_idx['d'], z_source, settings.rotation, settings.flip_x, settings.flip_y,
-                               settings.power_spectrum, shape, settings.super_res,
-                               settings.normalize, gain))
+        if settings.gauss:
+            # TODO: Make this gaussian configurable
+            raw_frame = to_frame_gaussian(frame_idx['d'], 0.7, shape)
+        else:
+            raw_frame = to_frame(frame_idx['d'], z_source, shape, settings.super_res, settings.normalize)
+
+        frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
+                                          settings.power_spectrum, gain))
 
     # Output
     if settings.t:
@@ -169,6 +172,7 @@ def parse_arguments():
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
+    parser.add_argument("--gauss", action='store_true', help='Use events, but place back as gaussian with a certain lambda')
     parser.add_argument("--events_sumtot", action='store_true', help="Use events in sumToT mode")
     parser.add_argument("--events_nhits", action='store_true', help="Use events in nHits mode")
     parser.add_argument("--timing_stats", action='store_true', help="Show timing stats")
@@ -184,7 +188,6 @@ def parse_arguments():
     parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
     parser.add_argument("--cluster_stats_tot", type=int, default=None, help="Override cluster_stats ToT limit")
     parser.add_argument("--cluster_stats_size", type=int, default=None, help="Override cluster_stats size limit")
-    parser.add_argument("--gauss", action='store_true', help='Place back gaussian')
 
     settings = parser.parse_args()
 
@@ -194,6 +197,8 @@ def parse_arguments():
 def save_mrc(frames, filename):
     data = np.array(frames)
 
+    # MRC data is saved in different orientation than tiff and imshow. We're correcting this here to be the same as tiff
+    # and imshow
     data = np.flip(data, axis=(1,))
 
     if data.dtype == np.float64 or data.dtype == np.float32:
@@ -379,7 +384,7 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
     return frames
 
 
-def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution, normalize, gain):
+def to_frame(frame, z_source, shape, super_resolution, normalize):
     x = frame['x']
     y = frame['y']
 
@@ -407,6 +412,10 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
         n = d.todense() + 1
         f = np.divide(f, n)
 
+    return f
+
+
+def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
     if gain is not None:
         f = np.multiply(f, gain)
 
@@ -435,35 +444,21 @@ def to_frame(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, s
         return f
 
 
-r = h5py.File('/home/paul/tpx3/tpx3EventViewer/gauss-%0.2f.h5' % 0.50, 'r')
-distribution = r['distribution'][()]
-
-
-def event_to_gauss(x, y):
-    global distribution
-    return distribution[int(y%1*100), int(x%1*100)]
-
-
-def frame_gaussian(frame):
-    f = np.zeros((512 + 2 * 3, 512 + 2 * 3))
-
-    for idx, e in enumerate(frame):
-        Z = event_to_gauss(e['x'], e['y'])
-
-        x_base = int(e['x']) + 3
-        y_base = int(e['y']) + 3
-
-        f[y_base - 1: y_base + 2, x_base - 1: x_base + 2] += Z
-
-    return f[3:515, 3:515]
-
-
-def to_frame_gaussian(frame, z_source, rotation, flip_x, flip_y, power_spectrum, shape, super_resolution, normalize, gain):
+def to_frame_gaussian(frame, lam, shape):
+    # The number of 100 jobs is chosen rather arbitrarily
     split = np.array_split(frame, 100)
 
+    distribution = get_gauss_distribution(lam)
+
     # We can use a with statement to ensure threads are cleaned up promptly
-    with multiprocessing.Pool(processes=8) as pool:
-        results = list(tqdm.tqdm(pool.imap(frame_gaussian, split), total=len(split)))
+    with multiprocessing.Pool() as pool:
+        # Allow to pass the gaussian distribution
+        func = partial(event_gaussian, distribution, shape)
+
+        # Split jobs to workers
+        results = list(tqdm.tqdm(pool.imap(func, split), total=len(split)))
+
+        # Combine result into one frame again
         f = np.sum(results, axis=0)
 
     return f
