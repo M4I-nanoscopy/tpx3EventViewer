@@ -57,7 +57,7 @@ def get_gauss_distribution(lam):
     return distribution
 
 
-def event_gaussian(distribution, events, shape):
+def event_gaussian(distribution, shape, events):
     # Make frame bigger, to fit the gaussians being placed back
     f = np.zeros((shape + 2 * 3, shape + 2 * 3))
 
