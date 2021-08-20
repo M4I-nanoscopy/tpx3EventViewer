@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import _tkinter
+import math
 import multiprocessing
 from functools import partial
 
@@ -117,15 +118,15 @@ def main():
 
     # Calculate all frames
     frames = list()
-    for frame_idx in frames_idx:
-        if settings.gauss:
-            # TODO: Make this gaussian configurable
-            raw_frame = to_frame_gaussian(frame_idx['d'], 0.7, shape)
-        else:
+    if not settings.gauss:
+        for frame_idx in frames_idx:
             raw_frame = to_frame(frame_idx['d'], z_source, shape, settings.super_res, settings.normalize)
-
-        frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
+            frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
                                           settings.power_spectrum, gain))
+    else:
+        # TODO: Make this gaussian configurable
+        frames = to_frames_gaussian(frames_idx, 0.7, shape)
+
 
     # Output
     if settings.t:
@@ -444,10 +445,11 @@ def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
         return f
 
 
-def to_frame_gaussian(frame, lam, shape):
-    # The number of 100 jobs is chosen rather arbitrarily
-    split = np.array_split(frame, 100)
+def to_frames_gaussian(frames, lam, shape):
+    # Calculate how many splits we need per frame, with a minimum of just 1 split
+    n_splits = max(math.floor(multiprocessing.cpu_count() / len(frames)), 1)
 
+    # Get (or precalculate) the gaussian distribution
     distribution = get_gauss_distribution(lam)
 
     # We can use a with statement to ensure threads are cleaned up promptly
@@ -455,13 +457,26 @@ def to_frame_gaussian(frame, lam, shape):
         # Allow to pass the gaussian distribution
         func = partial(event_gaussian, distribution, shape)
 
-        # Split jobs to workers
-        results = list(tqdm.tqdm(pool.imap(func, split), total=len(split)))
+        # Progress bar
+        bar = tqdm.tqdm(total=n_splits*len(frames))
 
+        def update(*a):
+            bar.update(n_splits)
+
+        results = list()
+
+        for frame in frames:
+            split = np.array_split(frame['d'], n_splits)
+
+            # Assign jobs to workers
+            results.append(pool.map_async(func, split, callback=update))
+
+        result_frames = list()
         # Combine result into one frame again
-        f = np.sum(results, axis=0)
+        for result in results:
+            result_frames.append(np.sum(result.get(), axis=0))
 
-    return f
+    return result_frames
 
 
 # Display some stats about the ToA timer
