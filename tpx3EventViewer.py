@@ -125,7 +125,10 @@ def main():
                                           settings.power_spectrum, gain))
     else:
         # TODO: Make this gaussian configurable
-        frames = to_frames_gaussian(frames_idx, 0.7, shape)
+        raw_frames = to_frames_gaussian(frames_idx, 0.7, shape)
+        for raw_frame in raw_frames:
+            frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
+                                              settings.power_spectrum, gain))
 
 
     # Output
