@@ -70,6 +70,19 @@ def main():
         print("WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (
             data.attrs['version'], VERSION))
 
+    # Output filename
+    filename = ''
+    if settings.t or settings.m:
+        if settings.f:
+            filename = settings.f
+        else:
+            ext = '.tif' if settings.t else '.mrc'
+            filename = os.path.splitext(settings.FILE)[0] + ext
+
+        if os.path.exists(filename) and not settings.o:
+            print("ERROR: Output file %s already exists, and overwrite not specified" % filename)
+            return 1
+
     # Get z_source
     z_source = None
     if settings.hits_tot:
@@ -130,23 +143,11 @@ def main():
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
                                               settings.power_spectrum, gain))
 
-
-    # Output
-    if settings.t:
-        if settings.f:
-            filename = settings.f
-        else:
-            filename = os.path.splitext(settings.FILE)[0] + ".tif"
-
-        save_tiff(frames, settings.uint32, settings.uint8, filename)
-
     if settings.m:
-        if settings.f:
-            filename = settings.f
-        else:
-            filename = os.path.splitext(settings.FILE)[0] + ".mrc"
-
         save_mrc(frames, filename)
+
+    if settings.t:
+        save_tiff(frames, settings.uint32, settings.uint8, filename)
 
     if not settings.n:
         show(frames, settings.animation, os.path.basename(settings.FILE))
@@ -165,6 +166,7 @@ def parse_arguments():
     parser.add_argument("--uint8", action='store_true', help="Store uint8 tif (supported by almost all readers)")
     parser.add_argument("-m", action='store_true', help="Store as mrc file")
     parser.add_argument("-f", metavar='FILE', help="File name for .tif file (default is .h5 file with .tif extension)")
+    parser.add_argument("-o", action='store_true', help="Overwrite existing file")
     parser.add_argument("-n", action='store_true', help="Don't show interactive viewer")
     parser.add_argument("-r", "--rotation", type=int, default=0, help="Rotate 90 degrees (1: clockwise, "
                                                                       "-1 anti-clockwise, 0: none). Default: 0")
