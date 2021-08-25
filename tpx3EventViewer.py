@@ -274,7 +274,7 @@ def show(frames, animate, name):
         dpi = 150
 
     fig = plt.figure(dpi=dpi)
-    fig.canvas.set_window_title(name)
+    fig.canvas.manager.set_window_title(name)
     ax = fig.add_subplot(111)
     fig.subplots_adjust(left=0.25, bottom=0.25)
 
