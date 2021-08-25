@@ -64,12 +64,6 @@ def main():
                 "ERROR: No /events dataset present in file (%s). Did you mean to use --hits to display hits?" % settings.FILE)
             return 1
 
-    data = f[source]
-
-    if data.attrs['version'] != VERSION:
-        print("WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (
-            data.attrs['version'], VERSION))
-
     # Output filename
     filename = ''
     if settings.t or settings.m:
@@ -82,6 +76,12 @@ def main():
         if os.path.exists(filename) and not settings.o:
             print("ERROR: Output file %s already exists, and overwrite not specified" % filename)
             return 1
+
+    data = f[source]
+
+    if data.attrs['version'] != VERSION:
+        print("WARNING: Version of data file does not match version of tpx3EventViewer (%s vs %s)" % (
+            data.attrs['version'], VERSION))
 
     # Get z_source
     z_source = None
