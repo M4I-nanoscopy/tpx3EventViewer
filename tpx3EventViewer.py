@@ -23,7 +23,7 @@ import tqdm
 
 from gaussians import event_gaussian, get_gauss_distribution
 
-VERSION = '2.0.0'
+VERSION = '2.1.0'
 # The Timepix3 fine ToA clock is 640 Mhz. This is equal to a tick length of 1.5625 ns.
 tpx3_tick = 1.5625e-09
 ticks_second = 1. / tpx3_tick
@@ -121,7 +121,7 @@ def main():
     frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
 
     if settings.timing_stats:
-        timing_stats(data, frames_idx)
+        timing_stats(data, frames_idx, f[source].attrs['min_toa'], f[source].attrs['max_toa'])
         return 0
 
     gain = None
@@ -368,6 +368,9 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
         while start_idx < end_final_idx:
             end_idx = np.argmax(toa > end)
 
+            # TODO: Need to be able to handle empty frames
+            #if toa[end_idx] - end > exposure*0.1
+
             if end_idx == 0:
                 end_idx = len(data) - 1
 
@@ -386,6 +389,9 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
             'end_idx': end_final_idx,
             'd': data[start_idx:end_final_idx]
         })
+
+    # for frame in frames:
+    #    print("Average time of frame: %f" % ((toa[frame['end_idx']] - toa[frame['start_idx']]) * tpx3_tick))
 
     return frames
 
@@ -485,7 +491,7 @@ def to_frames_gaussian(frames, lam, shape):
 
 
 # Display some stats about the ToA timer
-def timing_stats(hits, frames_idx):
+def timing_stats(hits, frames_idx, min_toa, max_toa):
     global tpx3_tick
     toa = hits['ToA']
 
@@ -500,6 +506,8 @@ def timing_stats(hits, frames_idx):
         ticks = int(toa[-1]) - int(toa[0])
 
     print("Exposure time (seconds): %.5f" % (ticks * tpx3_tick))
+
+    print("Exposure time (marker) (seconds): %.5f" % ((max_toa - min_toa) * tpx3_tick))
 
     print("Frame start time (idx %d): %d" % (frames_idx[0]['start_idx'], toa[frames_idx[0]['start_idx']]))
     print("Frame end time (idx %d): %d" % (frames_idx[0]['end_idx'], toa[frames_idx[0]['end_idx']]))
