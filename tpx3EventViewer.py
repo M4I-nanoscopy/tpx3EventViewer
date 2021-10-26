@@ -121,7 +121,9 @@ def main():
     frames_idx = calculate_frames_idx(data, settings.exposure, settings.start, settings.end)
 
     if settings.timing_stats:
-        timing_stats(data, frames_idx, f[source].attrs['min_toa'], f[source].attrs['max_toa'])
+        min_toa = f[source].attrs.get('min_toa', -1)
+        max_toa = f[source].attrs.get('max_toa', -1)
+        timing_stats(data, frames_idx, min_toa, max_toa, settings.n)
         return 0
 
     gain = None
@@ -135,7 +137,7 @@ def main():
         for frame_idx in frames_idx:
             raw_frame = to_frame(frame_idx['d'], z_source, shape, settings.super_res, settings.normalize)
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
-                                          settings.power_spectrum, gain))
+                                              settings.power_spectrum, gain))
     else:
         # TODO: Make this gaussian configurable
         raw_frames = to_frames_gaussian(frames_idx, 0.7, shape)
@@ -178,7 +180,8 @@ def parse_arguments():
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
-    parser.add_argument("--gauss", action='store_true', help='Use events, but place back as gaussian with a certain lambda')
+    parser.add_argument("--gauss", action='store_true',
+                        help='Use events, but place back as gaussian with a certain lambda')
     parser.add_argument("--events_sumtot", action='store_true', help="Use events in sumToT mode")
     parser.add_argument("--events_nhits", action='store_true', help="Use events in nHits mode")
     parser.add_argument("--timing_stats", action='store_true', help="Show timing stats")
@@ -369,7 +372,7 @@ def calculate_frames_idx(data, exposure, start_time, end_time):
             end_idx = np.argmax(toa > end)
 
             # TODO: Need to be able to handle empty frames
-            #if toa[end_idx] - end > exposure*0.1
+            # if toa[end_idx] - end > exposure*0.1
 
             if end_idx == 0:
                 end_idx = len(data) - 1
@@ -469,7 +472,7 @@ def to_frames_gaussian(frames, lam, shape):
         func = partial(event_gaussian, distribution, shape)
 
         # Progress bar
-        bar = tqdm.tqdm(total=n_splits*len(frames))
+        bar = tqdm.tqdm(total=n_splits * len(frames))
 
         def update(*a):
             bar.update(n_splits)
@@ -491,7 +494,7 @@ def to_frames_gaussian(frames, lam, shape):
 
 
 # Display some stats about the ToA timer
-def timing_stats(hits, frames_idx, min_toa, max_toa):
+def timing_stats(hits, frames_idx, min_toa, max_toa, no_graph):
     global tpx3_tick
     toa = hits['ToA']
 
@@ -507,20 +510,84 @@ def timing_stats(hits, frames_idx, min_toa, max_toa):
 
     print("Exposure time (seconds): %.5f" % (ticks * tpx3_tick))
 
-    print("Exposure time (marker) (seconds): %.5f" % ((max_toa - min_toa) * tpx3_tick))
+    if min_toa > 0 and max_toa > 0:
+        print("Exposure time (marker) (seconds): %.5f" % ((max_toa - min_toa) * tpx3_tick))
+    else:
+        "WARNING: No marker pixel data found for calculating exposure time. Using value above"
+        min_toa = toa[0]
+        max_toa = toa[-1]
 
     print("Frame start time (idx %d): %d" % (frames_idx[0]['start_idx'], toa[frames_idx[0]['start_idx']]))
     print("Frame end time (idx %d): %d" % (frames_idx[0]['end_idx'], toa[frames_idx[0]['end_idx']]))
 
     print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000.) / (ticks * tpx3_tick)))
 
-    plot_timers(hits, frames_idx)
+    # Prepare plotting of timers
+    fig, (ax0, ax1) = plt.subplots(nrows=2, figsize=(9.6, 9.6))
+
+    plot_timers(hits, frames_idx, ax0)
+    plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax1)
+    plt.tight_layout()
+
+    if not no_graph:
+        plt.show()
+
+
+def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
+    toa = hits['ToA']
+    dtoa = toa - min_toa
+    step = 1000000
+
+    # Calculate hit rate frequency
+    bins = np.arange(0, max_toa, step)
+    hist, bins = np.histogram(dtoa, bins=bins)
+    center = (bins[:-1] + bins[1:]) / 2
+
+    # Simple method to find beam on time
+    beam_on = (hist > np.max(hist) / 2)
+    ind = list(np.where(np.diff(beam_on))[0])
+    # Fix for beam_on at end and beginning of acquisition (conversion to Python list not pretty)
+    if beam_on[0]:
+        ind.insert(0, -1)
+    if beam_on[-1]:
+        ind.append(len(hits) - 1)
+    beam_on_windows = np.array(ind).reshape(-1, 2)
+
+    # Convert to rate
+    hist_rate = hist / (step * tpx3_tick)
+
+    # Convert to time
+    center_time = center * tpx3_tick
+    dtoa_time = dtoa * tpx3_tick
+
+    # Plot
+    ax.step(center_time, hist_rate, where='mid', color='red')
+
+    # Beam on and off time
+    for window in beam_on_windows:
+        if window[0] == -1:
+            start_time = 0
+        else:
+            start_time = center_time[window[0]]
+        print("Beam on: %.5f" % start_time)
+        print("Beam off: %.5f" % center_time[window[1]])
+        ax.axvspan(start_time, center_time[window[1]], alpha=0.2, color='green')
+
+    # Frame start and end time
+    for frame in frames_idx:
+        ax.axvline(dtoa_time[frame['start_idx']])
+        ax.axvline(dtoa_time[frame['end_idx']])
+
+    # Format graph
+    formatter0 = EngFormatter(unit='hit')
+    ax.yaxis.set_major_formatter(formatter0)
+    ax.set_title('Hit rate as function of time')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Hit Rate (hits/s)')
 
 
 # Plot ToA timer of entire run against hits
-def plot_timers(hits, frames_idx):
-    fig, ax = plt.subplots()
-
+def plot_timers(hits, frames_idx, ax):
     index = np.arange(len(hits))
 
     for chip in range(0, 4):
@@ -532,23 +599,21 @@ def plot_timers(hits, frames_idx):
         toa = chip_events['ToA'][1::1000]
         toa_index = chip_index[1::1000]
 
-        plt.scatter(toa_index, toa, label='Chip %d' % chip)
+        ax.scatter(toa_index, toa, label='Chip %d' % chip)
 
-    plt.title('ToA time (every 1000nth hit)')
+    ax.set_title('ToA as function of hit index (every 1000nth hit)')
 
     formatter0 = EngFormatter(unit='hit')
     ax.xaxis.set_major_formatter(formatter0)
 
-    plt.xlabel('Hit index')
-    plt.ylabel('Time ticks')
-    plt.legend()
+    ax.set_xlabel('Hit index')
+    ax.set_ylabel('ToA time')
+    ax.legend()
 
     # Frame start and end time
     for frame_idx in frames_idx:
-        plt.axvline(frame_idx['start_idx'])
-        plt.axvline(frame_idx['end_idx'])
-
-    plt.show()
+        ax.axvline(frame_idx['start_idx'])
+        ax.axvline(frame_idx['end_idx'])
 
 
 def print_cluster_stats(clusters, max_tot, max_size):
