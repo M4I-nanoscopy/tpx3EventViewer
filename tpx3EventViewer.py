@@ -539,7 +539,7 @@ def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
     step = 1000000
 
     # Calculate hit rate frequency
-    bins = np.arange(0, max_toa, step)
+    bins = np.arange(0, max_toa-min_toa, step)
     hist, bins = np.histogram(dtoa, bins=bins)
     center = (bins[:-1] + bins[1:]) / 2
 
@@ -550,7 +550,7 @@ def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
     if beam_on[0]:
         ind.insert(0, -1)
     if beam_on[-1]:
-        ind.append(len(hits) - 1)
+        ind.append(len(hist) - 1)
     beam_on_windows = np.array(ind).reshape(-1, 2)
 
     # Convert to rate
@@ -559,6 +559,7 @@ def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
     # Convert to time
     center_time = center * tpx3_tick
     dtoa_time = dtoa * tpx3_tick
+    bins_time = bins * tpx3_tick
 
     # Plot
     ax.step(center_time, hist_rate, where='mid', color='red')
@@ -568,10 +569,10 @@ def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
         if window[0] == -1:
             start_time = 0
         else:
-            start_time = center_time[window[0]]
+            start_time = bins_time[window[0]]
         print("Beam on: %.5f" % start_time)
-        print("Beam off: %.5f" % center_time[window[1]])
-        ax.axvspan(start_time, center_time[window[1]], alpha=0.2, color='green')
+        print("Beam off: %.5f" % bins_time[window[1]])
+        ax.axvspan(start_time, bins_time[window[1]], alpha=0.2, color='green')
 
     # Frame start and end time
     for frame in frames_idx:
