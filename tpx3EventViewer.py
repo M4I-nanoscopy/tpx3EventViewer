@@ -522,18 +522,19 @@ def timing_stats(hits, frames_idx, min_toa, max_toa, no_graph):
 
     print("Event/Hit rate (MHit/s): %.1f" % ((len(hits) / 1000000.) / (ticks * tpx3_tick)))
 
+    hit_rate, center_time, dtoa_time, beam_on_windows = calculate_local_hit_rate(hits, min_toa, max_toa)
+
     # Prepare plotting of timers
-    fig, (ax0, ax1) = plt.subplots(nrows=2, figsize=(9.6, 9.6))
-
-    plot_timers(hits, frames_idx, ax0)
-    plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax1)
-    plt.tight_layout()
-
     if not no_graph:
+        fig, (ax0, ax1) = plt.subplots(nrows=2, figsize=(9.6, 9.6))
+
+        plot_timers(hits, frames_idx, ax0)
+        plot_hit_rate(hit_rate, center_time, dtoa_time, beam_on_windows, frames_idx, ax1)
+        plt.tight_layout()
         plt.show()
 
 
-def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
+def calculate_local_hit_rate(hits, min_toa, max_toa):
     toa = hits['ToA']
     dtoa = toa - min_toa
     step = 1000000
@@ -543,7 +544,7 @@ def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
     hist, bins = np.histogram(dtoa, bins=bins)
     center = (bins[:-1] + bins[1:]) / 2
 
-    # Simple method to find beam on time
+    # Simple method to find beam-on time
     beam_on = (hist > np.max(hist) / 2)
     ind = list(np.where(np.diff(beam_on))[0])
     # Fix for beam_on at end and beginning of acquisition (conversion to Python list not pretty)
@@ -554,25 +555,35 @@ def plot_hit_rate(hits, min_toa, max_toa, frames_idx, ax):
     beam_on_windows = np.array(ind).reshape(-1, 2)
 
     # Convert to rate
-    hist_rate = hist / (step * tpx3_tick)
+    hit_rate = hist / (step * tpx3_tick)
 
     # Convert to time
     center_time = center * tpx3_tick
     dtoa_time = dtoa * tpx3_tick
-    bins_time = bins * tpx3_tick
-
-    # Plot
-    ax.step(center_time, hist_rate, where='mid', color='red')
 
     # Beam on and off time
     for window in beam_on_windows:
         if window[0] == -1:
             start_time = 0
         else:
-            start_time = bins_time[window[0]]
+            start_time = center_time[window[0]]
         print("Beam on: %.5f" % start_time)
-        print("Beam off: %.5f" % bins_time[window[1]])
-        ax.axvspan(start_time, bins_time[window[1]], alpha=0.2, color='green')
+        print("Beam off: %.5f" % center_time[window[1]])
+
+    return hit_rate, center_time, dtoa_time, beam_on_windows
+
+
+def plot_hit_rate(local_hit_rate, center_time, dtoa_time, beam_on_windows, frames_idx, ax):
+    # Plot
+    ax.step(center_time, local_hit_rate, where='mid', color='red')
+
+    # Beam on and off time
+    for window in beam_on_windows:
+        if window[0] == -1:
+            start_time = 0
+        else:
+            start_time = center_time[window[0]]
+        ax.axvspan(start_time, center_time[window[1]], alpha=0.2, color='green')
 
     # Frame start and end time
     for frame in frames_idx:
@@ -674,7 +685,7 @@ def print_cluster_stats(clusters, max_tot, max_size):
     # Set grid
     plt.grid(b=True, which='both', zorder=1)
 
-    # Colorbar
+    # Color bar
     cbar = plt.colorbar()
     cbar.set_ticks([])
     cbar.set_label('Normalised occurrence')
