@@ -288,7 +288,7 @@ def show(frames, animate, name):
     extent = [0, frame.shape[0], frame.shape[1], 0]
 
     im = ax.imshow(frame, vmin=min5, vmax=max95, extent=extent, origin=origin)
-    ax.format_coord = lambda x, y: '%3.2f, %3.2f, %10d' % (x, y, frame[int(y + 0.5), int(x + 0.5)])
+    ax.format_coord = lambda x, y: '%3.2f, %3.2f, %10d' % (x, y, frame[int(y), int(x)])
     fig.colorbar(im)
 
     def update_frame(val):
