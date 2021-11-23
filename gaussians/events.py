@@ -57,9 +57,14 @@ def get_gauss_distribution(lam):
     return distribution
 
 
-def event_gaussian(distribution, shape, events):
-    # Make frame bigger, to fit the gaussians being placed back
-    f = np.zeros((shape + 2 * 3, shape + 2 * 3))
+def event_gaussian(distribution, shape, super_res, events):
+    # Make frame bigger, to fit the Gaussian's being placed back
+    extended_shape = shape * super_res + 2 * 3
+    f = np.zeros((extended_shape, extended_shape))
+
+    # Calculate super res
+    events['x'] = events['x'] * super_res
+    events['y'] = events['y'] * super_res
 
     for idx, e in enumerate(events):
         # Get the 100th index of y and x, by multiplying the float remainder by 100 and converting to int
@@ -73,4 +78,4 @@ def event_gaussian(distribution, shape, events):
         f[y_base - 1: y_base + 2, x_base - 1: x_base + 2] += Z
 
     # Return only the real frame, not the extra bits
-    return f[3:shape+3, 3:shape+3]
+    return f[3:extended_shape+3, 3:extended_shape+3]

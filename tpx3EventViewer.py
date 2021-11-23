@@ -140,7 +140,7 @@ def main():
                                               settings.power_spectrum, gain))
     else:
         # TODO: Make this gaussian configurable
-        raw_frames = to_frames_gaussian(frames_idx, 0.7, shape)
+        raw_frames = to_frames_gaussian(frames_idx, 0.7, shape, settings.super_res)
         for raw_frame in raw_frames:
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
                                               settings.power_spectrum, gain))
@@ -459,7 +459,7 @@ def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
         return f
 
 
-def to_frames_gaussian(frames, lam, shape):
+def to_frames_gaussian(frames, lam, shape, super_res):
     # Calculate how many splits we need per frame, with a minimum of just 1 split
     n_splits = max(math.floor(multiprocessing.cpu_count() / len(frames)), 1)
 
@@ -469,7 +469,7 @@ def to_frames_gaussian(frames, lam, shape):
     # We can use a with statement to ensure threads are cleaned up promptly
     with multiprocessing.Pool() as pool:
         # Allow to pass the gaussian distribution
-        func = partial(event_gaussian, distribution, shape)
+        func = partial(event_gaussian, distribution, shape, super_res)
 
         # Progress bar
         bar = tqdm.tqdm(total=n_splits * len(frames))
