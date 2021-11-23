@@ -60,6 +60,7 @@ def get_gauss_distribution(lam):
 def event_gaussian(distribution, shape, super_res, events):
     # Make frame bigger, to fit the Gaussian's being placed back
     extended_shape = shape * super_res + 2 * 3
+    normal_shape = shape * super_res
     f = np.zeros((extended_shape, extended_shape))
 
     # Calculate super res
@@ -78,4 +79,4 @@ def event_gaussian(distribution, shape, super_res, events):
         f[y_base - 1: y_base + 2, x_base - 1: x_base + 2] += Z
 
     # Return only the real frame, not the extra bits
-    return f[3:extended_shape+3, 3:extended_shape+3]
+    return f[3:normal_shape+3, 3:normal_shape+3]

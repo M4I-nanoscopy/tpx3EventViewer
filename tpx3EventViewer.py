@@ -192,7 +192,7 @@ def parse_arguments():
     parser.add_argument("--exposure", type=float, default=0, help="Max exposure time in seconds (0: infinite)")
     parser.add_argument("--start", type=float, default=0, help="Start time in seconds")
     parser.add_argument("--end", type=float, default=0, help="End time in seconds")
-    parser.add_argument("--super_res", metavar='N', type=int, default=0,
+    parser.add_argument("--super_res", metavar='N', type=int, default=1,
                         help="Up scale the amount of pixels by N factor")
     parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
     parser.add_argument("--cluster_stats_tot", type=int, default=None, help="Override cluster_stats ToT limit")
@@ -403,7 +403,7 @@ def to_frame(frame, z_source, shape, super_resolution, normalize):
     x = frame['x']
     y = frame['y']
 
-    if super_resolution > 0:
+    if super_resolution > 1:
         x = x * super_resolution
         y = y * super_resolution
         shape = shape * super_resolution
