@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import _tkinter
 import math
 import multiprocessing
@@ -71,7 +71,7 @@ def main():
             filename = settings.f
         else:
             ext = '.tif' if settings.t else '.mrc'
-            filename = os.path.splitext(settings.FILE)[0] + ext
+            filename = os.path.splitext(os.path.basename(settings.FILE))[0] + ext
 
         if os.path.exists(filename) and not settings.o:
             print("ERROR: Output file %s already exists, and overwrite not specified" % filename)
