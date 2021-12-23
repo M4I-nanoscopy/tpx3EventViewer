@@ -513,7 +513,7 @@ def timing_stats(hits, frames_idx, min_toa, max_toa, no_graph):
     if min_toa > 0 and max_toa > 0:
         print("Exposure time (marker) (seconds): %.5f" % ((max_toa - min_toa) * tpx3_tick))
     else:
-        "WARNING: No marker pixel data found for calculating exposure time. Using value above"
+        print("WARNING: No marker pixel data found for calculating exposure time. Using value above")
         min_toa = toa[0]
         max_toa = toa[-1]
 
