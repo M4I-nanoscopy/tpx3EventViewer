@@ -18,7 +18,6 @@ from matplotlib import animation, patches
 from PIL import Image
 import os
 import copy
-import netpbmfile
 
 import tqdm
 
