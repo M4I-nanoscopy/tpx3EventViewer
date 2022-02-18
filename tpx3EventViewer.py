@@ -18,6 +18,7 @@ from matplotlib import animation, patches
 from PIL import Image
 import os
 import copy
+import netpbmfile
 
 import tqdm
 
@@ -126,10 +127,19 @@ def main():
         timing_stats(data, frames_idx, min_toa, max_toa, settings.n)
         return 0
 
+    # Gain and defect (dead) pixel settings
     gain = None
+    defects = None
     if settings.gain:
-        with mrcfile.open(settings.gain) as gain_file:
-            gain = gain_file.data
+        with h5py.File(settings.gain, mode='r') as h5:
+            if h5.attrs['shape'] != shape:
+                print("ERROR: Shape matrix stored in gain file does not match image shape.")
+                return 1
+
+            gain = h5['gain'][()]
+
+            if settings.correct_defect_pixels:
+                defects = h5['defects'][()]
 
     # Calculate all frames
     frames = list()
@@ -137,13 +147,15 @@ def main():
         for frame_idx in frames_idx:
             raw_frame = to_frame(frame_idx['d'], z_source, shape, settings.super_res, settings.normalize)
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
-                                              settings.power_spectrum, gain))
+                                              settings.power_spectrum, gain, defects))
     else:
         # TODO: Make this gaussian configurable
         raw_frames = to_frames_gaussian(frames_idx, 0.7, shape, settings.super_res)
         for raw_frame in raw_frames:
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
-                                              settings.power_spectrum, gain))
+                                              settings.power_spectrum, gain, defects))
+
+
 
     if settings.m:
         save_mrc(frames, filename)
@@ -197,8 +209,12 @@ def parse_arguments():
     parser.add_argument("--cluster_stats", action='store_true', help="Show cluster stats")
     parser.add_argument("--cluster_stats_tot", type=int, default=None, help="Override cluster_stats ToT limit")
     parser.add_argument("--cluster_stats_size", type=int, default=None, help="Override cluster_stats size limit")
+    parser.add_argument("--correct_defect_pixels", action='store_true', help="Correct defect pixels (supplied in gain file)")
 
     settings = parser.parse_args()
+
+    if (settings.hits_tot or settings.hits_toa) and not settings.hits:
+        parser.error("Need to set showing --hits when selecting --hits_tot or --hits_toa")
 
     return settings
 
@@ -430,9 +446,12 @@ def to_frame(frame, z_source, shape, super_resolution, normalize):
     return f
 
 
-def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
+def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain, defects):
     if gain is not None:
         f = np.multiply(f, gain)
+
+    if defects is not None:
+        f = correct_defect_pixels(f, defects)
 
     if rotation != 0:
         f = np.rot90(f, k=rotation)
@@ -491,6 +510,26 @@ def to_frames_gaussian(frames, lam, shape, super_res):
             result_frames.append(np.sum(result.get(), axis=0))
 
     return result_frames
+
+
+def correct_defect_pixels(f, defects):
+    masked = np.count_nonzero(defects)
+
+    # Pick from a normal distribution, based on the image mean and stddev
+    mean = np.mean(f)
+    stddev = np.std(f)
+    picks = np.random.normal(mean, stddev, masked)
+
+    # Correct picks to never be negative
+    picks[picks < 0] = 0
+
+    # Convert to dtype of frame
+    picks = picks.astype(f.dtype)
+
+    # Place back
+    np.place(f, defects, picks)
+
+    return f
 
 
 # Display some stats about the ToA timer
@@ -632,6 +671,14 @@ def print_cluster_stats(clusters, max_tot, max_size):
     print("WARNING: Limiting to first 1M clusters")
     limit = 1000000
     cluster_subset = clusters[0:limit, 0, :]
+
+    # Only get cross events
+    # cross_x = np.logical_and(events['x'] > 253, events['x'] < 260)
+    # cross_y = np.logical_and(events['y'] > 253, events['y'] < 260)
+    # cross = np.logical_or(cross_y, cross_x)
+    # events_subset = events[cross]
+    # tot = events_subset['sumToT']
+    # size = events_subset['nHits']
 
     tot = np.sum(cluster_subset, axis=(1, 2))
     size = np.count_nonzero(cluster_subset, axis=(1, 2))
