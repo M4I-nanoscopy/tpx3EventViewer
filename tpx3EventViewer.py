@@ -133,14 +133,14 @@ def main():
 
     # Calculate all frames
     frames = list()
-    if not settings.gauss:
+    if settings.gauss is None:
         for frame_idx in frames_idx:
             raw_frame = to_frame(frame_idx['d'], z_source, shape, settings.super_res, settings.normalize)
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
                                               settings.power_spectrum, gain))
     else:
         # TODO: Make this gaussian configurable
-        raw_frames = to_frames_gaussian(frames_idx, 0.7, shape, settings.super_res)
+        raw_frames = to_frames_gaussian(frames_idx, settings.gauss, shape, settings.super_res)
         for raw_frame in raw_frames:
             frames.append(frame_modifications(raw_frame, settings.rotation, settings.flip_x, settings.flip_y,
                                               settings.power_spectrum, gain))
@@ -180,8 +180,8 @@ def parse_arguments():
     parser.add_argument("--hits", action='store_true', help="Use hits (default in counting mode)")
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
-    parser.add_argument("--gauss", action='store_true',
-                        help='Use events, but place back as gaussian with a certain lambda')
+    parser.add_argument("--gauss", default=None, type=float,
+                        help='Use events, but place back as gaussian with a certain lambda. Default: None')
     parser.add_argument("--events_sumtot", action='store_true', help="Use events in sumToT mode")
     parser.add_argument("--events_nhits", action='store_true', help="Use events in nHits mode")
     parser.add_argument("--timing_stats", action='store_true', help="Show timing stats")
