@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 import _tkinter
-import math
-import multiprocessing
-from functools import partial
-
 from matplotlib.ticker import EngFormatter
-from scipy import fftpack
+from scipy import fft
 import argparse
 import sys
 import h5py
@@ -18,10 +14,8 @@ from matplotlib import animation, patches
 from PIL import Image
 import os
 import copy
-
-import tqdm
-
-from gaussians import event_gaussian, get_gauss_distribution
+from scipy.ndimage import gaussian_filter
+from skimage.transform import downscale_local_mean
 
 VERSION = '2.1.0'
 # The Timepix3 fine ToA clock is 640 Mhz. This is equal to a tick length of 1.5625 ns.
@@ -445,11 +439,11 @@ def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
 
     if power_spectrum:
         # Take the fourier transform of the image.
-        f1 = fftpack.fft2(f)
+        f1 = fft.fft2(f)
 
         # Now shift the quadrants around so that low spatial frequencies are in
         # the center of the 2D fourier transformed image.
-        f2 = fftpack.fftshift(f1)
+        f2 = fft.fftshift(f1)
 
         # Calculate a 2D power spectrum
         psd2D = np.abs(f2) ** 2
@@ -459,36 +453,66 @@ def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
         return f
 
 
+def fourier_crop_bin(f, factor):
+    # Calculate center
+    center = tuple(int(s / 2) for s in f.shape)
+
+    # Calculate crop
+    s = tuple(int(s / (factor*2)) for s in f.shape)
+
+    # Perform fourier cropping by taking the middle of the centre
+    crop = f[center[0]-1-s[0]:center[0]-1+s[0], center[1]-1-s[1]:center[1]-1+s[1]]
+
+    return crop
+
+
+def gauss_2d(lam, x0, y0, X, Y):
+    return np.exp(-((X-x0)**2/(lam**2)+((Y-y0)**2/(lam**2))))
+
+
 def to_frames_gaussian(frames, lam, shape, super_res):
-    # Calculate how many splits we need per frame, with a minimum of just 1 split
-    n_splits = max(math.floor(multiprocessing.cpu_count() / len(frames)), 1)
+    result_frames = list()
 
-    # Get (or precalculate) the gaussian distribution
-    distribution = get_gauss_distribution(lam)
+    # The factor used for upscaling first, before downscaling back to the requested (super) resolution
+    factor = 10
 
-    # We can use a with statement to ensure threads are cleaned up promptly
-    with multiprocessing.Pool() as pool:
-        # Allow to pass the gaussian distribution
-        func = partial(event_gaussian, distribution, shape, super_res)
+    # Calculate the 2D gaussian filter
+    x = y = np.arange(0, shape*factor, 1)
+    X, Y = np.meshgrid(x, y)
+    half = shape*factor/2
+    g = gauss_2d(lam*factor, half, half, X, Y)
+    fg = np.abs(fft.fftshift(fft.fft2(g, workers=-1)))
 
-        # Progress bar
-        bar = tqdm.tqdm(total=n_splits * len(frames))
+    for frame in frames:
+        x = frame['d']['x']
+        y = frame['d']['y']
 
-        def update(*a):
-            bar.update(n_splits)
+        # Upscale by the factor
+        x = x * factor
+        y = y * factor
+        s = shape * factor
 
-        results = list()
+        # Calculate the frame with naive placed events
+        data = np.ones(len(frame['d']))
+        # TODO: The uint8 may be dangerous here, but it saves memory
+        d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s), dtype=np.uint8)
+        f = d.todense()
 
-        for frame in frames:
-            split = np.array_split(frame['d'], n_splits)
+        # Apply gaussian filter
+        ff = fft.fftshift(fft.fft2(f, workers=-1))
+        ff_gauss = np.multiply(fg, ff)
 
-            # Assign jobs to workers
-            results.append(pool.map_async(func, split, callback=update))
+        # Bin the image in fourier space back to the requested (super) resolution
+        nf_bin = fourier_crop_bin(ff_gauss, int(factor / super_res))
 
-        result_frames = list()
-        # Combine result into one frame again
-        for result in results:
-            result_frames.append(np.sum(result.get(), axis=0))
+        # Inverse fourier transform
+        nf = np.abs(fft.ifft2(fft.ifftshift(nf_bin), workers=-1))
+
+        # Alternative methods
+        # nf = gaussian_filter(f,  sigma=(lam*factor, lam*factor))
+        # nf = downscale_local_mean(nf, int(factor/super_res))
+
+        result_frames.append(nf)
 
     return result_frames
 

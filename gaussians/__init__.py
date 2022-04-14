@@ -1,2 +1,0 @@
-from gaussians.events import event_gaussian
-from gaussians.events import get_gauss_distribution
