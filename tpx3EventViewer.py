@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 import _tkinter
+import multiprocessing
+import signal
+from functools import partial
+
+import tqdm
 from matplotlib.ticker import EngFormatter
+from numpy.fft import rfftfreq, fftfreq
 from scipy import fft
 import argparse
 import sys
@@ -453,68 +459,97 @@ def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
         return f
 
 
-def fourier_crop_bin(f, factor):
-    # Calculate center
-    center = tuple(int(s / 2) for s in f.shape)
+# Inspiration for this function from:
+# https://github.com/eugenepalovcak/restore
+# This function assumes a rfft2() input
+def fourier_crop_bin(mic, factor):
+    n_x, n_y = mic.shape
+    cutoff = 1/factor
+    x, y = np.meshgrid(rfftfreq(n_y), fftfreq(n_x))
+    mic_freq = np.sqrt(x**2 + y**2)
 
-    # Calculate crop
-    s = tuple(int(s / (factor*2)) for s in f.shape)
+    f_h = mic_freq[0]
+    f_v = mic_freq[:n_x//2, 0]
 
-    # Perform fourier cropping by taking the middle of the centre
-    crop = f[center[0]-1-s[0]:center[0]-1+s[0], center[1]-1-s[1]:center[1]-1+s[1]]
+    # Calculate the frequency (pixel number) where to cutoff
+    c_h = np.searchsorted(f_h, cutoff)
+    # TODO: We do not fully understand this division by 2 here
+    c_v = np.searchsorted(f_v, cutoff) // 2
 
-    return crop
+    # mic[:c_v, :c_h] = 10000
+    # mic[n_x - c_v:, :c_h] = 10000
+
+    # Combine two parts of the spectrum to form the resulting image
+    mic_ft_crop = np.vstack((mic[:c_v, :c_h],
+                             mic[n_x - c_v:, :c_h]))
+    return mic_ft_crop
 
 
-def gauss_2d(lam, x0, y0, X, Y):
-    return np.exp(-((X-x0)**2/(lam**2)+((Y-y0)**2/(lam**2))))
+def gauss_2d(sigma, x0, y0, X, Y):
+    return np.exp(-((X - x0) ** 2 / (2 * sigma ** 2) + ((Y - y0) ** 2 / (2 * sigma ** 2)))) / (sigma**2 * 2 * np.pi)
 
 
-def to_frames_gaussian(frames, lam, shape, super_res):
-    result_frames = list()
+def get_gaussian_filter(sigma, factor, shape):
+    # Calculate the 2D gaussian
+    grid_len = np.arange(0, shape * factor, 1)
+    grid_x, grid_y = np.meshgrid(grid_len, grid_len)
+    half = int(shape * factor / 2)
+    g = gauss_2d(sigma * factor, half, half, grid_x, grid_y)
 
-    # The factor used for upscaling first, before downscaling back to the requested (super) resolution
-    factor = 10
+    # Take FFT of gaussian
+    fg = np.abs(fft.rfft2(g, workers=1))
 
-    # Calculate the 2D gaussian filter
-    x = y = np.arange(0, shape*factor, 1)
-    X, Y = np.meshgrid(x, y)
-    half = shape*factor/2
-    g = gauss_2d(lam*factor, half, half, X, Y)
-    fg = np.abs(fft.fftshift(fft.fft2(g, workers=-1)))
+    return fg
 
-    for frame in frames:
-        x = frame['d']['x']
-        y = frame['d']['y']
 
-        # Upscale by the factor
-        x = x * factor
-        y = y * factor
-        s = shape * factor
+def init_pool():
+    # Ignore sigint (keyboard interrupts) in the children
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-        # Calculate the frame with naive placed events
-        data = np.ones(len(frame['d']))
-        # TODO: The uint8 may be dangerous here, but it saves memory
-        d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s), dtype=np.uint8)
-        f = d.todense()
 
-        # Apply gaussian filter
-        ff = fft.fftshift(fft.fft2(f, workers=-1))
-        ff_gauss = np.multiply(fg, ff)
+def to_frames_gaussian(frames, sigma, shape, super_res):
+    # The factor used for up scaling first, before downscaling back to the requested (super) resolution
+    factor = 12
 
-        # Bin the image in fourier space back to the requested (super) resolution
-        nf_bin = fourier_crop_bin(ff_gauss, int(factor / super_res))
+    fg = get_gaussian_filter(sigma, factor, shape)
 
-        # Inverse fourier transform
-        nf = np.abs(fft.ifft2(fft.ifftshift(nf_bin), workers=-1))
+    # We can use a with statement to ensure threads are cleaned up promptly
+    with multiprocessing.Pool(initializer=init_pool) as pool:
+        # Allow to pass all arguments
+        func = partial(frame_gaussian, fg, factor, shape, super_res)
 
-        # Alternative methods
-        # nf = gaussian_filter(f,  sigma=(lam*factor, lam*factor))
-        # nf = downscale_local_mean(nf, int(factor/super_res))
-
-        result_frames.append(nf)
+        result_frames = list(tqdm.tqdm(pool.imap(func, frames), total=len(frames)))
 
     return result_frames
+
+
+def frame_gaussian(fg, factor, shape, super_res, frame):
+    # Upscale by the factor
+    x = frame['d']['x'] * factor
+    y = frame['d']['y'] * factor
+    s = shape * factor
+
+    # Calculate the frame with naive placed events
+    data = np.ones(len(frame['d']))
+    # The uint8 may be dangerous here, but it saves memory. But considering we are up scaling first, we
+    # should never have that many events per pixel.
+    d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s), dtype=np.uint8)
+
+    # Apply gaussian filter
+    ff = fft.rfft2(d.todense(), workers=1)
+    ff_gauss = np.multiply(fg, ff)
+
+    # Bin the image in fourier space back to the requested (super) resolution
+    nf_bin = fourier_crop_bin(ff_gauss, factor / super_res)
+
+    # Inverse fourier transform
+    nf = np.abs(fft.irfft2(nf_bin, workers=1))
+
+    # Alternative methods for gaussian filter, or the binning
+    # nf = gaussian_filter(f,  sigma=(lam*factor, lam*factor))
+    # nf = downscale_local_mean(nf, int(factor/super_res))
+
+    return nf
 
 
 # Display some stats about the ToA timer
