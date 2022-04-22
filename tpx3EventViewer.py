@@ -6,6 +6,7 @@ from functools import partial
 
 import tqdm
 from matplotlib.ticker import EngFormatter
+from numpy.fft import rfft2, irfft2
 from numpy.fft import rfftfreq, fftfreq
 from scipy import fft
 import argparse
@@ -497,7 +498,7 @@ def get_gaussian_filter(sigma, factor, shape):
     g = gauss_2d(sigma * factor, half, half, grid_x, grid_y)
 
     # Take FFT of gaussian
-    fg = np.abs(fft.rfft2(g, workers=1))
+    fg = np.abs(fft.rfft2(g))
 
     return fg
 
@@ -533,21 +534,21 @@ def frame_gaussian(fg, factor, shape, super_res, frame):
     data = np.ones(len(frame['d']))
     # The uint8 may be dangerous here, but it saves memory. But considering we are up scaling first, we
     # should never have that many events per pixel.
-    d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s), dtype=np.uint8)
+    d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s))
 
     # Apply gaussian filter
     ff = fft.rfft2(d.todense(), workers=1)
     ff_gauss = np.multiply(fg, ff)
 
     # Bin the image in fourier space back to the requested (super) resolution
-    nf_bin = fourier_crop_bin(ff_gauss, factor / super_res)
+    ff_gauss_bin = fourier_crop_bin(ff_gauss, factor / super_res)
 
     # Inverse fourier transform
-    nf = np.abs(fft.irfft2(nf_bin, workers=1))
+    nf = fft.irfft2(ff_gauss_bin, workers=1)
 
     # Alternative methods for gaussian filter, or the binning
-    # nf = gaussian_filter(f,  sigma=(lam*factor, lam*factor))
-    # nf = downscale_local_mean(nf, int(factor/super_res))
+    #nf = gaussian_filter(d.todense(),  sigma=0.7*factor)
+    #nf = downscale_local_mean(nf, int(factor/super_res)) * 1000
 
     return nf
 
