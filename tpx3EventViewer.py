@@ -21,8 +21,6 @@ from matplotlib import animation, patches
 from PIL import Image
 import os
 import copy
-from scipy.ndimage import gaussian_filter
-from skimage.transform import downscale_local_mean
 
 VERSION = '2.1.0'
 # The Timepix3 fine ToA clock is 640 Mhz. This is equal to a tick length of 1.5625 ns.
@@ -460,47 +458,76 @@ def frame_modifications(f, rotation, flip_x, flip_y, power_spectrum, gain):
         return f
 
 
-# Inspiration for this function from:
+# Inspiration for fourier cropping function from:
 # https://github.com/eugenepalovcak/restore
-# This function assumes a rfft2() input
-def fourier_crop_bin(mic, factor):
-    n_x, n_y = mic.shape
-    cutoff = 1/factor
-    x, y = np.meshgrid(rfftfreq(n_y), fftfreq(n_x))
-    mic_freq = np.sqrt(x**2 + y**2)
+def bin_mic_ft(mic_ft, apix, cutoff, mic_freqs, lp=False, bwo=5):
+    """ Bins a micrograph by Fourier cropping
+    Optionally applies a Butterworth low-pass filter"""
+    if lp:
+        mic_ft *= 1. / (1. + (mic_freqs / cutoff) ** (2 * bwo))
 
-    f_h = mic_freq[0]
-    f_v = mic_freq[:n_x//2, 0]
+    mic_bin = fourier_crop(mic_ft, mic_freqs, cutoff)
 
-    # Calculate the frequency (pixel number) where to cutoff
+    return mic_bin
+
+
+def fourier_crop(mic_ft, mic_freqs, cutoff):
+    """Extract the portion of the real FT lower than a cutoff frequency"""
+    if len(mic_ft.shape) == 3:
+        n_z, n_x, n_y = mic_ft.shape
+    elif len(mic_ft.shape) == 2:
+        n_x, n_y = mic_ft.shape
+        n_z = 0
+    else:
+        raise Exception("Can only handle 2D or 3D shapes")
+
+    f_h = mic_freqs[0]
+    f_v = mic_freqs[:n_x // 2, 0]
+
     c_h = np.searchsorted(f_h, cutoff)
-    # TODO: We do not fully understand this division by 2 here
-    c_v = np.searchsorted(f_v, cutoff) // 2
+    c_v = np.searchsorted(f_v, cutoff)
 
-    # mic[:c_v, :c_h] = 10000
-    # mic[n_x - c_v:, :c_h] = 10000
+    if n_z > 0:
+        # Swapping axis is a trick for supporting a stack of micrographs
+        mic_ft = np.swapaxes(mic_ft, 0, 1)
+        mic_ft_crop = np.vstack((mic_ft[:c_v, :, :c_h + 1],
+                                 mic_ft[n_x - c_v:, :, :c_h + 1]))
+        mic_ft_crop = np.swapaxes(mic_ft_crop, 1, 0)
+    else:
+        mic_ft_crop = np.vstack((mic_ft[:c_v, :c_h + 1],
+                                 mic_ft[n_x - c_v:, :c_h + 1]))
 
-    # Combine two parts of the spectrum to form the resulting image
-    mic_ft_crop = np.vstack((mic[:c_v, :c_h],
-                             mic[n_x - c_v:, :c_h]))
     return mic_ft_crop
 
 
+def get_mic_freqs(mic, apix, angles=False):
+    """Returns array of effective spatial frequencies for a real 2D FFT.
+    If angles is True, returns the array of the angles w.r.t. the X-axis
+    """
+    n_x, n_y = mic.shape
+    x, y = np.meshgrid(rfftfreq(n_y, d=apix), fftfreq(n_x, d=apix))
+    s = np.sqrt(x ** 2 + y ** 2)
+
+    if angles:
+        a = np.arctan2(y, x)
+        return s, a
+    else:
+        return s
+
+
 def gauss_2d(sigma, x0, y0, X, Y):
-    return np.exp(-((X - x0) ** 2 / (2 * sigma ** 2) + ((Y - y0) ** 2 / (2 * sigma ** 2)))) / (sigma**2 * 2 * np.pi)
+    return np.exp(-((X - x0) ** 2 / (2 * sigma ** 2) + ((Y - y0) ** 2 / (2 * sigma ** 2)))) / (sigma ** 2 * 2 * np.pi)
 
 
-def get_gaussian_filter(sigma, factor, shape):
+def get_gaussian_filter(sigma, grid_len):
     # Calculate the 2D gaussian
-    grid_len = np.arange(0, shape * factor, 1)
-    grid_x, grid_y = np.meshgrid(grid_len, grid_len)
-    half = int(shape * factor / 2)
-    g = gauss_2d(sigma * factor, half, half, grid_x, grid_y)
+    grid = np.arange(0, grid_len, 1)
+    grid_x, grid_y = np.meshgrid(grid, grid)
+    g = gauss_2d(sigma, (grid_len // 2) - 1, (grid_len // 2) - 1, grid_x, grid_y)
 
-    # Take FFT of gaussian
-    fg = np.abs(fft.rfft2(g))
+    fg = rfft2(g)
 
-    return fg
+    return np.abs(fg)
 
 
 def init_pool():
@@ -510,9 +537,9 @@ def init_pool():
 
 def to_frames_gaussian(frames, sigma, shape, super_res):
     # The factor used for up scaling first, before downscaling back to the requested (super) resolution
-    factor = 12
+    factor = 10
 
-    fg = get_gaussian_filter(sigma, factor, shape)
+    fg = get_gaussian_filter(sigma * factor, factor * shape)
 
     # We can use a with statement to ensure threads are cleaned up promptly
     with multiprocessing.Pool(initializer=init_pool) as pool:
@@ -534,21 +561,18 @@ def frame_gaussian(fg, factor, shape, super_res, frame):
     data = np.ones(len(frame['d']))
     # The uint8 may be dangerous here, but it saves memory. But considering we are up scaling first, we
     # should never have that many events per pixel.
-    d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s))
+    d = scipy.sparse.coo_matrix((data, (y, x)), shape=(s, s), dtype=np.uint8)
+    f = d.todense()
 
     # Apply gaussian filter
-    ff = fft.rfft2(d.todense(), workers=1)
-    ff_gauss = np.multiply(fg, ff)
+    ff = fft.rfft2(f, workers=1)
+    ff_gauss = ff * fg
 
     # Bin the image in fourier space back to the requested (super) resolution
-    ff_gauss_bin = fourier_crop_bin(ff_gauss, factor / super_res)
+    ff_gauss_bin = bin_mic_ft(ff_gauss, 1 / factor, super_res / 2, mic_freqs=get_mic_freqs(f, 1 / factor))
 
     # Inverse fourier transform
     nf = fft.irfft2(ff_gauss_bin, workers=1)
-
-    # Alternative methods for gaussian filter, or the binning
-    #nf = gaussian_filter(d.todense(),  sigma=0.7*factor)
-    #nf = downscale_local_mean(nf, int(factor/super_res)) * 1000
 
     return nf
 
