@@ -180,7 +180,7 @@ def parse_arguments():
     parser.add_argument("--hits_tot", action='store_true', help="Use hits in ToT mode")
     parser.add_argument("--hits_toa", action='store_true', help="Use hits in ToA mode")
     parser.add_argument("--gauss", default=None, type=float,
-                        help='Use events, but place back as gaussian with a certain lambda. Default: None')
+                        help='Use events, but place back as gaussian with a certain sigma. Default: None')
     parser.add_argument("--events_sumtot", action='store_true', help="Use events in sumToT mode")
     parser.add_argument("--events_nhits", action='store_true', help="Use events in nHits mode")
     parser.add_argument("--timing_stats", action='store_true', help="Show timing stats")
