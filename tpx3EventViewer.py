@@ -264,7 +264,7 @@ def save_tiff(frames, uint32, uint8, filename):
 
 def show(frames, animate, name):
     # Calculate threshold values
-    frame = frames[0]
+    frame = np.array(frames[0])
     min5 = np.percentile(frame, 5)
     min = np.min(frame)
     max95 = np.percentile(frame, 95)
